@@ -8,7 +8,7 @@ from components.history import food_history
 from components.settings import settings
 
 def main():
-    st.sidebar.title("🍽️ Nutrition Tracker")
+    st.sidebar.title("🧭 Tracker Pro Navigation")
     
     # Initialize session state for tip and page navigation
     if 'show_tip' not in st.session_state:
