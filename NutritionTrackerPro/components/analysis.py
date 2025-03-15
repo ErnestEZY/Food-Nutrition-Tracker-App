@@ -8,6 +8,11 @@ from statsmodels.tsa.arima.model import ARIMA
 from database import daily_log_collection
 from utils import DIET_GOALS, calculate_bmi_adjusted_goals
 
+def format_number(num):
+    if num >= 1000:  # Shrink to k for 4-digit numbers or more
+        return f"{num / 1000:.1f}k"
+    return f"{num:.1f}"
+
 def nutrition_analysis():
     st.title("📊 Nutrition Analysis")
     
@@ -81,13 +86,23 @@ def nutrition_analysis():
     st.markdown("<div style='margin-bottom: 30px;'></div>", unsafe_allow_html=True)
     
     st.subheader("Nutritional Status")
+    # Inject CSS to adjust font size of metric values and deltas (slightly larger)
+    st.markdown("""
+        <style>
+        [data-testid="stMetricValue"] { font-size: 28px !important; }  /* Main value (actual/goal) */
+        [data-testid="stMetricDelta"] { font-size: 18px !important; }  /* Delta (percentage) */
+        </style>
+    """, unsafe_allow_html=True)
+    
     goal_cols = st.columns(4)
     goal_key_map = {"Calories": "calories", "Protein": "protein", "Carbohydrates": "carbs", "Fat": "fat"}
     for i, (nutrient, actual) in enumerate(total_nutrients.items()):
         goal_key = goal_key_map.get(nutrient, nutrient.lower())
         goal = adjusted_goals.get(goal_key, 0)
         percentage = (actual / goal) * 100 if goal > 0 else 0
-        goal_cols[i].metric(nutrient, f"{actual:.1f} / {goal}", f"{percentage:.1f}%")
+        actual_str = format_number(actual)
+        goal_str = format_number(goal)
+        goal_cols[i].metric(nutrient, f"{actual_str} / {goal_str}", f"{percentage:.1f}%")
     
     st.markdown("<div style='margin-bottom: 30px;'></div>", unsafe_allow_html=True)
     
