@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objs as go
 from datetime import datetime, timedelta
@@ -76,12 +77,76 @@ def nutrition_analysis():
         hist_df = pd.DataFrame.from_dict(hist_data, orient='index').reset_index()
         hist_df.columns = ['Date', 'Calories', 'Protein', 'Carbohydrates']
         hist_df = hist_df.sort_values('Date')
+
+    st.subheader("7-Day Goal Streak")
+    if not historical_logs:
+        st.warning("No historical data available for the past 7 days to calculate streak.")
+    else:
+        # Define goal check (within 10% of target)
+        def goal_met(day_data):
+            if day_data is None or not isinstance(day_data, dict):
+                return False
+            if any(v == 0 for v in day_data.values()):
+                return False
+            conditions = [
+                abs(day_data.get('Calories', 0) - adjusted_goals['calories']) / adjusted_goals['calories'] <= 0.15 if adjusted_goals['calories'] > 0 else True,
+                abs(day_data.get('Protein', 0) - adjusted_goals['protein']) / adjusted_goals['protein'] <= 0.15 if adjusted_goals['protein'] > 0 else True,
+                abs(day_data.get('Carbohydrates', 0) - adjusted_goals['carbs']) / adjusted_goals['carbs'] <= 0.15 if adjusted_goals['carbs'] > 0 else True
+            ]
+            return all(conditions)
         
+        # Build 7-day streak grid (Sunday to Saturday)
+        today = datetime.now()
+        start_day = today - timedelta(days=today.weekday())  # Start of current week (Sunday)
+        streak_grid = {}
+        for i in range(7):
+            day = (start_day + timedelta(days=i)).strftime('%Y-%m-%d')
+            day_data = hist_df[hist_df['Date'] == day].iloc[0].to_dict() if not hist_df[hist_df['Date'] == day].empty else None
+            streak_grid[day] = '✅' if goal_met(day_data) else '❌' if day_data is not None else ' '
+        
+        current_streak = 0
+        max_streak = 0
+        for day_status in reversed(list(streak_grid.values())):
+            if day_status == '✅':
+                current_streak += 1
+                max_streak = max(max_streak, current_streak)
+            else:
+                current_streak = 0
+        
+        days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+        day_html = ''.join([f"<td>{days[i]}</td>" for i in range(7)])
+        status_html = ''.join([f"<td>{streak_grid[(start_day + timedelta(days=i)).strftime('%Y-%m-%d')]}</td>" for i in range(7)])
+        
+        streak_html = f"""
+        <div style="background-color: #ff4444; color: white; padding: 5px; text-align: center; border-top-left-radius: 10px; border-top-right-radius: 10px;">
+            7-Day Goal Streak
+        </div>
+        <table style="width: 100%; border-collapse: collapse; background-color: white; overflow: hidden;">
+            <tr style="border-bottom: 2px solid #ddd; color: black;">
+                {day_html}
+            </tr>
+            <tr>
+                {status_html}
+            </tr>
+        </table>
+        <div style="text-align: center; padding: 10px; background-color: #f9f9f9; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px; color: black;">
+            <strong>Current Streak:</strong> {current_streak} | <strong>Best Streak:</strong> {max_streak}
+        </div>
+        <small style="color: #666; text-align: center; display: block; margin-top: 5px;">
+            ✅ = Goal Met (within 15% of target) | ❌ = Goal Missed
+        </small>
+        """
+        st.markdown(streak_html, unsafe_allow_html=True)
+    
+    # Add Toggle for Full 7-Day Trend Chart
+    show_trend = st.checkbox("Show 7-Day Nutrient Trend", value=False)
+    if show_trend and not hist_df.empty:
+        st.subheader("7-Day Nutrient Trend")
         fig_line = go.Figure()
         for nutrient in ['Calories', 'Protein', 'Carbohydrates']:
             fig_line.add_trace(go.Scatter(x=hist_df['Date'], y=hist_df[nutrient], mode='lines+markers', name=nutrient))
         fig_line.update_layout(title='7-Day Nutrient Trend', xaxis_title='Date', yaxis_title='Amount')
-        st.plotly_chart(fig_line)
+        st.plotly_chart(fig_line, key="nutrient_trend_chart")  # Added unique key
     
     st.markdown("<div style='margin-bottom: 30px;'></div>", unsafe_allow_html=True)
     
@@ -158,15 +223,24 @@ def nutrition_analysis():
                 tomorrow = datetime.now() + timedelta(days=1)
                 tomorrow_day = tomorrow.weekday()
                 
-                if hist_df['Calories'].std() < 10:
+                # Increase the standard deviation threshold to avoid ARIMA on low-variability data
+                if hist_df['Calories'].std() < 50:  # Increased from 10 to 50
                     forecast = hist_df['Calories'].mean() * random.uniform(0.95, 1.05)
                 else:
                     try:
-                        model = ARIMA(hist_df['Calories'], order=(1, 0, 1))
-                        forecast = model.fit().forecast(steps=1)[0]
+                        # Use differencing to handle non-stationarity
+                        model = ARIMA(hist_df['Calories'], order=(1, 1, 1))  # Changed to (1,1,1)
+                        forecast = model.fit(maxiter=100).forecast(steps=1)[0]  # Increased max iterations
                     except:
-                        model = ARIMA(hist_df['Calories'], order=(1, 0, 0))
-                        forecast = model.fit().forecast(steps=1)[0]
+                        try:
+                            # Simpler model if the first fails
+                            model = ARIMA(hist_df['Calories'], order=(1, 1, 0))  # Changed to (1,1,0)
+                            forecast = model.fit(maxiter=100).forecast(steps=1)[0]
+                        except:
+                            # Fallback to weighted average if ARIMA fails
+                            weights = np.linspace(0, 1, len(hist_df))
+                            weights = weights / weights.sum()
+                            forecast = (hist_df['Calories'] * weights).sum()
                     if forecast < 500 or forecast > 5000:
                         forecast = hist_df['Calories'].mean()
                     if len(hist_df) >= 5:
