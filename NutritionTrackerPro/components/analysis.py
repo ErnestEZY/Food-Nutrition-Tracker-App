@@ -61,6 +61,7 @@ def nutrition_analysis():
         st.plotly_chart(fig_bar)
     
     historical_logs = list(daily_log_collection.find({"date": {"$gte": datetime.now() - timedelta(days=7)}}))
+    historical_logs.extend([log for log in today_logs if log not in historical_logs])
     if not historical_logs:
         st.warning("No historical data available for the past 7 days.")
         hist_df = pd.DataFrame(columns=['Date', 'Calories', 'Protein', 'Carbohydrates'])
@@ -76,34 +77,88 @@ def nutrition_analysis():
             hist_data[date]['Carbohydrates'] += nutrients.get('carbohydrates', 0)
         hist_df = pd.DataFrame.from_dict(hist_data, orient='index').reset_index()
         hist_df.columns = ['Date', 'Calories', 'Protein', 'Carbohydrates']
-        hist_df = hist_df.sort_values('Date')
 
-    st.subheader("7-Day Goal Streak")
+    st.subheader("7-Day Goal Streak")   
     if not historical_logs:
         st.warning("No historical data available for the past 7 days to calculate streak.")
     else:
-        # Define goal check (within 10% of target)
         def goal_met(day_data):
-            if day_data is None or not isinstance(day_data, dict):
+            # Basic validations
+            if day_data is None:
                 return False
-            if any(v == 0 for v in day_data.values()):
+    
+            if not isinstance(day_data, dict):
                 return False
-            conditions = [
-                abs(day_data.get('Calories', 0) - adjusted_goals['calories']) / adjusted_goals['calories'] <= 0.15 if adjusted_goals['calories'] > 0 else True,
-                abs(day_data.get('Protein', 0) - adjusted_goals['protein']) / adjusted_goals['protein'] <= 0.15 if adjusted_goals['protein'] > 0 else True,
-                abs(day_data.get('Carbohydrates', 0) - adjusted_goals['carbs']) / adjusted_goals['carbs'] <= 0.15 if adjusted_goals['carbs'] > 0 else True
-            ]
-            return all(conditions)
+    
+            # Check for required keys
+            required_keys = ['Calories', 'Protein', 'Carbohydrates']
+            if not all(key in day_data for key in required_keys):
+                return False
+    
+            # Check for zero values
+            if any(day_data.get(key, 0) == 0 for key in required_keys):
+                return False
+    
+            # Check if each nutrient is within 90%-130% of the target
+            conditions = []
+    
+            for nutrient, goal_key in [('Calories', 'calories'), ('Protein', 'protein'), ('Carbohydrates', 'carbs')]:
+                actual = day_data.get(nutrient, 0)
+                target = adjusted_goals.get(goal_key, 0)
         
-        # Build 7-day streak grid (Sunday to Saturday)
+                if target > 0:
+                    percentage = (actual / target) * 100
+                    within_range = 90 <= percentage <= 130
+                    conditions.append(within_range)
+                else:
+                    conditions.append(True)
+    
+            result = all(conditions)
+            return result
+
+        # Build 7-day streak grid (Monday to Sunday)
         today = datetime.now()
-        start_day = today - timedelta(days=today.weekday())  # Start of current week (Sunday)
+        start_day = today - timedelta(days=today.weekday())  # Start of current week (Monday)
         streak_grid = {}
+
+        today_str = today.strftime('%Y-%m-%d')
+        today_in_hist_df = False
+
+        if not hist_df.empty:
+            hist_df['Date'] = pd.to_datetime(hist_df['Date']).dt.strftime('%Y-%m-%d')
+            today_in_hist_df = today_str in hist_df['Date'].values
+
+        if not today_in_hist_df and sum(total_nutrients.values()) > 0:
+            today_row = pd.DataFrame({
+                'Date': [today_str],
+                'Calories': [total_nutrients['Calories']],
+                'Protein': [total_nutrients['Protein']],
+                'Carbohydrates': [total_nutrients['Carbohydrates']]
+            })
+            hist_df = pd.concat([hist_df, today_row], ignore_index=True)
+
         for i in range(7):
             day = (start_day + timedelta(days=i)).strftime('%Y-%m-%d')
-            day_data = hist_df[hist_df['Date'] == day].iloc[0].to_dict() if not hist_df[hist_df['Date'] == day].empty else None
-            streak_grid[day] = '✅' if goal_met(day_data) else '❌' if day_data is not None else ' '
-        
+            day_data = None
+            if not hist_df.empty:
+                matches = hist_df[hist_df['Date'] == day]
+                if not matches.empty:
+                    day_data = matches.iloc[0].to_dict()
+    
+            is_today = day == today_str
+            if is_today:
+                if day_data is None and sum(total_nutrients.values()) > 0:
+                    day_data = {
+                        'Date': day,
+                        'Calories': total_nutrients['Calories'],
+                        'Protein': total_nutrients['Protein'],
+                        'Carbohydrates': total_nutrients['Carbohydrates']
+                    }
+    
+            streak_result = goal_met(day_data) if day_data is not None else False
+            streak_grid[day] = '✅' if streak_result else '❌' if day_data is not None else ' '
+
+        # Calculate current streak
         current_streak = 0
         max_streak = 0
         for day_status in reversed(list(streak_grid.values())):
@@ -112,8 +167,8 @@ def nutrition_analysis():
                 max_streak = max(max_streak, current_streak)
             else:
                 current_streak = 0
-        
-        days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+        days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
         day_html = ''.join([f"<td>{days[i]}</td>" for i in range(7)])
         status_html = ''.join([f"<td>{streak_grid[(start_day + timedelta(days=i)).strftime('%Y-%m-%d')]}</td>" for i in range(7)])
         
@@ -138,6 +193,8 @@ def nutrition_analysis():
         </small>
         """
         st.markdown(streak_html, unsafe_allow_html=True)
+    if st.button("Refresh Streak Table"):
+        st.rerun()
     
     # Add Toggle for Full 7-Day Trend Chart
     show_trend = st.checkbox("Show 7-Day Nutrient Trend", value=False)
