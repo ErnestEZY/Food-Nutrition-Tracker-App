@@ -14,9 +14,11 @@ def home_page():
         ### Features:
         - 📊 Comprehensive Nutrition Tracking
         - 🍽️ Daily Food Logging
-        - 📈 Detailed Nutrition Analysis
         - 🧮 Integrated BMI Calculator 
         - 🗂️ Historical Data Management
+        - 🎯 7-Day Goal Streak Tracking
+        - 📉 Personalized Nutrition Goals
+        - 🕒 Daily Reset at Midnight for Fresh Tracking
         """)
     
     st.subheader("📏 Calculate Your BMI")
