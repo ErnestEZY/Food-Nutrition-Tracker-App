@@ -7,8 +7,7 @@ import io
 def food_history():
     st.title("🕰️ Food History")
     
-    if 'show_history_data' not in st.session_state:
-        st.session_state.show_history_data = True
+    # Initialize session state for pagination and delete confirmation
     if 'show_delete_confirmation' not in st.session_state:
         st.session_state.show_delete_confirmation = False
     if 'history_page' not in st.session_state:
@@ -16,14 +15,16 @@ def food_history():
     if 'records_per_page' not in st.session_state:
         st.session_state.records_per_page = 10
     
-    if st.session_state.show_history_data:
-        two_weeks_ago = datetime.now() - timedelta(days=14)
-        total_logs = safe_mongodb_operation(lambda: daily_log_collection.count_documents({"date": {"$gte": two_weeks_ago}}), "Failed to count logs") or 0
-        
-        if total_logs == 0:
-            st.warning("No historical data available.")
-            return
-        
+    # Check for logs within the last 14 days
+    two_weeks_ago = datetime.now() - timedelta(days=14)
+    total_logs = safe_mongodb_operation(
+        lambda: daily_log_collection.count_documents({"date": {"$gte": two_weeks_ago}}),
+        "Failed to count logs"
+    ) or 0
+    
+    if total_logs == 0:
+        st.warning("No historical data available.")
+    else:
         records_per_page = st.session_state.records_per_page
         total_pages = (total_logs + records_per_page - 1) // records_per_page
         
@@ -70,15 +71,27 @@ def food_history():
                 st.rerun()
             
             if st.button("Export Complete History to CSV"):
-                all_logs = safe_mongodb_operation(lambda: list(daily_log_collection.find({"date": {"$gte": two_weeks_ago}}).sort("date", -1)), "Failed to retrieve logs for export") or []
+                all_logs = safe_mongodb_operation(
+                    lambda: list(daily_log_collection.find({"date": {"$gte": two_weeks_ago}}).sort("date", -1)),
+                    "Failed to retrieve logs for export"
+                ) or []
                 export_df = pd.DataFrame(all_logs)
                 export_df['date'] = export_df['date'].apply(lambda x: x.strftime("%Y-%m-%d %H:%M"))
                 export_df['calories'] = export_df['nutrients'].apply(lambda x: round(x.get('energy-kcal', 0), 1) if isinstance(x, dict) else 0)
                 export_display_df = export_df[display_columns].rename(columns=column_renames)
                 csv_buffer = io.StringIO()
                 export_display_df.to_csv(csv_buffer, index=True)
-                st.download_button(label="Download CSV", data=csv_buffer.getvalue(), file_name="food_history.csv", mime="text/csv")
-    
+                st.download_button(
+                    label="Download CSV",
+                    data=csv_buffer.getvalue(),
+                    file_name="food_history.csv",
+                    mime="text/csv"
+                )
+            if st.button("Refresh History Page"):
+                st.rerun()
+            st.markdown("<div style='margin-bottom: 30px;'></div>", unsafe_allow_html=True)
+            
+    # Clear History Data Section
     st.subheader("Clear History Data")
     def toggle_confirmation():
         st.session_state.show_delete_confirmation = True
@@ -95,7 +108,6 @@ def food_history():
             def delete_history_operation():
                 two_weeks_ago = datetime.now() - timedelta(days=14)
                 result = daily_log_collection.delete_many({"date": {"$gte": two_weeks_ago}})
-                st.session_state.show_history_data = False
                 st.session_state.show_delete_confirmation = False
                 st.session_state.history_page = 0
                 if result.deleted_count > 0:
