@@ -1,8 +1,12 @@
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 from database import food_collection, daily_log_collection, safe_mongodb_operation
 from utils import DIET_GOALS, calculate_bmi_adjusted_goals
+
+def get_day_boundary(dt):
+    """Return the datetime of the most recent 12 AM (midnight) before or at the given datetime."""
+    return dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
 def daily_food_log():
     st.title("📝 Daily Food Log")
@@ -74,10 +78,11 @@ def daily_food_log():
         st.stop()
     
     food_details = food_collection.find_one({"product_name": selected_food})
+    st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
     if food_details:
         st.subheader("Food Nutrition Details")
         st.markdown(f"**{food_details.get('product_name', 'Unknown')}** by **{food_details.get('brands', '')}**")
-        nutritional_cols = st.columns(3)
+        nutritional_cols = st.columns(4)
         nutrients = [
             ("Calories", food_details.get('nutriments', {}).get('energy-kcal', 0)),
             ("Protein (g)", food_details.get('nutriments', {}).get('proteins', 0)),
@@ -85,7 +90,7 @@ def daily_food_log():
             ("Fat (g)", food_details.get('nutriments', {}).get('fat', 0))
         ]
         for i, (name, value) in enumerate(nutrients):
-            nutritional_cols[i % 3].metric(name, f"{value:.1f}")
+            nutritional_cols[i % 4].metric(name, f"{value:.1f}")
     
     quantity = st.number_input("Quantity (servings)", min_value=0.25, max_value=10.0, value=1.0, step=0.25)
     
@@ -104,11 +109,16 @@ def daily_food_log():
             time.sleep(1)
             st.rerun()
         safe_mongodb_operation(add_to_log_operation, "Failed to add food to daily log")
+    st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
     
-    st.subheader("Recent Additions")
-    def get_recent_logs_operation():
-        return list(daily_log_collection.find({"brand": {"$ne": ""}}).sort("date", -1).limit(5))
-    recent_logs = safe_mongodb_operation(get_recent_logs_operation, "Failed to retrieve recent logs") or []
+    now = datetime.now()
+    today_start = get_day_boundary(now)  # 12 AM today
+    today_end = today_start + timedelta(days=1)  # 12 AM tomorrow
+    st.subheader("Recent Additions (since 12 AM)")
+    recent_logs = list(daily_log_collection.find({
+        "date": {"$gte": today_start, "$lt": today_end},
+        "brand": {"$ne": ""}
+    }).sort("date", -1).limit(5))
     
     if recent_logs:
         for log in recent_logs:
@@ -118,4 +128,4 @@ def daily_food_log():
             calories = log.get('nutrients', {}).get('energy-kcal', 0)
             st.write(f"• {display_name} ({quantity} serving{'s' if quantity > 1 else ''}) - {calories:.1f} calories - {date}")
     else:
-        st.info("No recent additions with valid brands to display.")
+        st.info("No recent additions with valid brands to display (since 12 AM).")
