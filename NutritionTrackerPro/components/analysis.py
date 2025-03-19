@@ -14,6 +14,10 @@ def format_number(num):
         return f"{num / 1000:.1f}k"
     return f"{num:.1f}"
 
+def get_day_boundary(dt):
+    """Return the datetime of the most recent 12 AM (midnight) before or at the given datetime."""
+    return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+
 def nutrition_analysis():
     st.title("📊 Nutrition Analysis")
     
@@ -24,7 +28,7 @@ def nutrition_analysis():
             st.rerun()
         st.stop()
     
-    st.subheader("Personalize Your Analysis")
+    st.subheader("Your Personal Analysis")
     st.info(f"Current BMI: {st.session_state.last_bmi:.1f}")
     diet_type = st.selectbox("Select Diet Type", list(DIET_GOALS.keys()))
     adjusted_goals = calculate_bmi_adjusted_goals(st.session_state.last_bmi, DIET_GOALS[diet_type])
@@ -32,43 +36,62 @@ def nutrition_analysis():
     st.info(f"Your BMI-adjusted daily goals: {adjusted_goals['calories']} calories, "
             f"{adjusted_goals['protein']}g protein, {adjusted_goals['carbs']}g carbs, {adjusted_goals['fat']}g fat")
     
-    today_logs = list(daily_log_collection.find({"date": {"$gte": datetime.now() - timedelta(days=1)}}))
-    if not today_logs:
-        st.warning("No food logs for today.")
-        return
-    
+    # Define day boundaries (12 AM)
+    now = datetime.now()
+    today_start = get_day_boundary(now)  # 12 AM today
+    today_end = today_start + timedelta(days=1)  # 12 AM tomorrow
+    historical_start = today_start - timedelta(days=7)  # 12 AM 7 days ago
+
+    # Query logs for today (from 12 AM today to 12 AM tomorrow)
+    today_logs = list(daily_log_collection.find({
+        "date": {"$gte": today_start, "$lt": today_end}
+    }))
+
+    # Initialize total_nutrients and food_breakdown
     total_nutrients = {"Calories": 0, "Protein": 0, "Carbohydrates": 0, "Fat": 0}
     food_breakdown = {}
-    for log in today_logs:
-        nutrients = log.get('nutrients', {})
-        food_name = log.get('food_name', 'Unknown')
-        total_nutrients["Calories"] += nutrients.get('energy-kcal', 0)
-        total_nutrients["Protein"] += nutrients.get('proteins', 0)
-        total_nutrients["Carbohydrates"] += nutrients.get('carbohydrates', 0)
-        total_nutrients["Fat"] += nutrients.get('fat', 0)
-        food_breakdown[food_name] = nutrients.get('energy-kcal', 0)
     
-    top_col1, top_col2 = st.columns(2)
-    with top_col1:
-        pie_df = pd.DataFrame.from_dict(total_nutrients, orient='index', columns=['Value'])
-        pie_df = pie_df[pie_df['Value'] > 0]
-        fig_pie = px.pie(pie_df, values='Value', names=pie_df.index, title='Macronutrient Distribution')
-        st.plotly_chart(fig_pie)
-    with top_col2:
-        fig_bar = px.bar(x=list(food_breakdown.keys()), y=list(food_breakdown.values()), title='Calorie Contribution by Food')
-        fig_bar.update_xaxes(title='Foods')
-        fig_bar.update_yaxes(title='Calories')
-        st.plotly_chart(fig_bar)
+    if not today_logs:
+        st.warning("No food logs for today (since 12 AM). Please log some food to see your daily analysis!")
+        if st.button("Go to Daily Food Log"):
+            st.session_state.page = "Daily Food Log"
+            st.rerun()
+    else:
+        for log in today_logs:
+            nutrients = log.get('nutrients', {})
+            food_name = log.get('food_name', 'Unknown')
+            total_nutrients["Calories"] += nutrients.get('energy-kcal', 0)
+            total_nutrients["Protein"] += nutrients.get('proteins', 0)
+            total_nutrients["Carbohydrates"] += nutrients.get('carbohydrates', 0)
+            total_nutrients["Fat"] += nutrients.get('fat', 0)
+            food_breakdown[food_name] = nutrients.get('energy-kcal', 0)
+        st.markdown("<small style='color: #666;'>Note: Daily totals reset at 12 AM each day.</small>", unsafe_allow_html=True)
+        top_col1, top_col2 = st.columns(2)
+        with top_col1:
+            pie_df = pd.DataFrame.from_dict(total_nutrients, orient='index', columns=['Value'])
+            pie_df = pie_df[pie_df['Value'] > 0]
+            fig_pie = px.pie(pie_df, values='Value', names=pie_df.index, title='Macronutrient Distribution')
+            st.plotly_chart(fig_pie)
+        with top_col2:
+            fig_bar = px.bar(x=list(food_breakdown.keys()), y=list(food_breakdown.values()), title='Calorie Contribution by Food')
+            fig_bar.update_xaxes(title='Foods')
+            fig_bar.update_yaxes(title='Calories')
+            st.plotly_chart(fig_bar)
     
-    historical_logs = list(daily_log_collection.find({"date": {"$gte": datetime.now() - timedelta(days=7)}}))
-    historical_logs.extend([log for log in today_logs if log not in historical_logs])
+    # Query historical logs (from 7 days ago at 12 AM to 12 AM today) for the streak
+    historical_logs = list(daily_log_collection.find({
+        "date": {"$gte": historical_start, "$lt": today_start}
+    }))
+    # Include today's logs in historical_logs for streak calculation
+    historical_logs.extend(today_logs)
+    
     if not historical_logs:
         st.warning("No historical data available for the past 7 days.")
         hist_df = pd.DataFrame(columns=['Date', 'Calories', 'Protein', 'Carbohydrates'])
     else:
         hist_data = {}
         for log in historical_logs:
-            date = log['date'].strftime('%Y-%m-%d')
+            date = get_day_boundary(log['date']).strftime('%Y-%m-%d')
             nutrients = log.get('nutrients', {})
             if date not in hist_data:
                 hist_data[date] = {'Calories': 0, 'Protein': 0, 'Carbohydrates': 0}
@@ -78,37 +101,33 @@ def nutrition_analysis():
         hist_df = pd.DataFrame.from_dict(hist_data, orient='index').reset_index()
         hist_df.columns = ['Date', 'Calories', 'Protein', 'Carbohydrates']
 
+    # 7-Day Goal Streak (uses historical data, not reset)
     st.subheader("7-Day Goal Streak")   
     if not historical_logs:
         st.warning("No historical data available for the past 7 days to calculate streak.")
     else:
+        # Define goal check (within 15% of target)
         def goal_met(day_data):
-            # Basic validations
             if day_data is None:
                 return False
     
             if not isinstance(day_data, dict):
                 return False
     
-            # Check for required keys
             required_keys = ['Calories', 'Protein', 'Carbohydrates']
             if not all(key in day_data for key in required_keys):
                 return False
     
-            # Check for zero values
             if any(day_data.get(key, 0) == 0 for key in required_keys):
                 return False
     
-            # Check if each nutrient is within 90%-130% of the target
             conditions = []
-    
             for nutrient, goal_key in [('Calories', 'calories'), ('Protein', 'protein'), ('Carbohydrates', 'carbs')]:
                 actual = day_data.get(nutrient, 0)
                 target = adjusted_goals.get(goal_key, 0)
-        
                 if target > 0:
                     percentage = (actual / target) * 100
-                    within_range = 90 <= percentage <= 130
+                    within_range = 80 <= percentage <= 130
                     conditions.append(within_range)
                 else:
                     conditions.append(True)
@@ -117,7 +136,7 @@ def nutrition_analysis():
             return result
 
         # Build 7-day streak grid (Monday to Sunday)
-        today = datetime.now()
+        today = get_day_boundary(now)  # Use 12 AM boundary as "today"
         start_day = today - timedelta(days=today.weekday())  # Start of current week (Monday)
         streak_grid = {}
 
@@ -189,14 +208,15 @@ def nutrition_analysis():
         </div>
         <small style="color: #666; text-align: center; display: block; margin-top: 5px;">
             This grid shows the current week (Sun-Sat) and updates as you log food daily. Older data outside this week won't appear. <br>
-            ✅ = Goal Met (within 15% of target) | ❌ = Goal Missed
+            ✅ = Goal Met (between 80% and 130% of target) | ❌ = Goal Missed
         </small>
         """
         st.markdown(streak_html, unsafe_allow_html=True)
+    
     if st.button("Refresh Streak Table"):
         st.rerun()
     
-    # Add Toggle for Full 7-Day Trend Chart
+    # 7-Day Nutrient Trend (uses historical data, but only shown if toggled)
     show_trend = st.checkbox("Show 7-Day Nutrient Trend", value=False)
     if show_trend and not hist_df.empty:
         st.subheader("7-Day Nutrient Trend")
@@ -204,11 +224,15 @@ def nutrition_analysis():
         for nutrient in ['Calories', 'Protein', 'Carbohydrates']:
             fig_line.add_trace(go.Scatter(x=hist_df['Date'], y=hist_df[nutrient], mode='lines+markers', name=nutrient))
         fig_line.update_layout(title='7-Day Nutrient Trend', xaxis_title='Date', yaxis_title='Amount')
-        st.plotly_chart(fig_line, key="nutrient_trend_chart")  # Added unique key
+        st.plotly_chart(fig_line, key="nutrient_trend_chart")
     
     st.markdown("<div style='margin-bottom: 30px;'></div>", unsafe_allow_html=True)
     
+    # Nutritional Status (resets at 12 AM)
     st.subheader("Nutritional Status")
+    st.markdown("<small style='color: #666;'>Note: Daily totals reset at 12 AM each day.</small>", unsafe_allow_html=True)
+    if not today_logs:
+        total_nutrients = {"Calories": 0, "Protein": 0, "Carbohydrates": 0, "Fat": 0}  # Reset to zero
     # Inject CSS to adjust font size of metric values and deltas (slightly larger)
     st.markdown("""
         <style>
@@ -216,7 +240,6 @@ def nutrition_analysis():
         [data-testid="stMetricDelta"] { font-size: 18px !important; }  /* Delta (percentage) */
         </style>
     """, unsafe_allow_html=True)
-    
     goal_cols = st.columns(4)
     goal_key_map = {"Calories": "calories", "Protein": "protein", "Carbohydrates": "carbs", "Fat": "fat"}
     for i, (nutrient, actual) in enumerate(total_nutrients.items()):
@@ -229,14 +252,16 @@ def nutrition_analysis():
     
     st.markdown("<div style='margin-bottom: 30px;'></div>", unsafe_allow_html=True)
     
+    # Daily Progress (resets at 12 AM)
     st.subheader("Daily Progress")
-    progress_cols = st.columns(4)
+    st.markdown("<small style='color: #666;'>Note: Daily totals reset at 12 AM each day.</small>", unsafe_allow_html=True)
     nutrient_values = {
         "Calories": (total_nutrients["Calories"], adjusted_goals["calories"]),
         "Protein": (total_nutrients["Protein"], adjusted_goals["protein"]),
         "Carbohydrates": (total_nutrients["Carbohydrates"], adjusted_goals["carbs"]),
         "Fat": (total_nutrients["Fat"], adjusted_goals["fat"])
     }
+    progress_cols = st.columns(4)
     for i, (nutrient, (current, goal)) in enumerate(nutrient_values.items()):
         with progress_cols[i]:
             st.write(nutrient)
@@ -260,7 +285,9 @@ def nutrition_analysis():
     
     st.markdown("<div style='margin-bottom: 30px;'></div>", unsafe_allow_html=True)
     
+    # Personal Insights (resets at 12 AM)
     st.subheader("Personal Insights")
+    st.markdown("<small style='color: #666;'>Note: Daily totals reset at 12 AM each day.</small>", unsafe_allow_html=True)
     col_score, col_predict = st.columns(2)
     with col_score:
         score = sum(max(0, 100 - abs(current - goal) / goal * 100) for _, (current, goal) in nutrient_values.items() if goal > 0) / 4
@@ -278,24 +305,20 @@ def nutrition_analysis():
                 hist_df['Rolling_Mean'] = hist_df['Calories'].rolling(window=3, min_periods=1).mean()
                 hist_df['Rolling_Std'] = hist_df['Calories'].rolling(window=3, min_periods=1).std().fillna(0)
                 
-                tomorrow = datetime.now() + timedelta(days=1)
+                tomorrow = now + timedelta(days=1)
                 tomorrow_day = tomorrow.weekday()
                 
-                # Increase the standard deviation threshold to avoid ARIMA on low-variability data
-                if hist_df['Calories'].std() < 50:  # Increased from 10 to 50
+                if hist_df['Calories'].std() < 50:
                     forecast = hist_df['Calories'].mean() * random.uniform(0.95, 1.05)
                 else:
                     try:
-                        # Use differencing to handle non-stationarity
-                        model = ARIMA(hist_df['Calories'], order=(1, 1, 1))  # Changed to (1,1,1)
-                        forecast = model.fit(maxiter=100).forecast(steps=1)[0]  # Increased max iterations
+                        model = ARIMA(hist_df['Calories'], order=(1, 1, 1))
+                        forecast = model.fit(maxiter=100).forecast(steps=1)[0]
                     except:
                         try:
-                            # Simpler model if the first fails
-                            model = ARIMA(hist_df['Calories'], order=(1, 1, 0))  # Changed to (1,1,0)
+                            model = ARIMA(hist_df['Calories'], order=(1, 1, 0))
                             forecast = model.fit(maxiter=100).forecast(steps=1)[0]
                         except:
-                            # Fallback to weighted average if ARIMA fails
                             weights = np.linspace(0, 1, len(hist_df))
                             weights = weights / weights.sum()
                             forecast = (hist_df['Calories'] * weights).sum()
@@ -322,6 +345,7 @@ def nutrition_analysis():
     
     st.markdown("<div style='margin-bottom: 30px;'></div>", unsafe_allow_html=True)
     
+    # BMI-Based Recommendations (does not reset)
     st.subheader("BMI-Based Recommendations")
     bmi_value = st.session_state.last_bmi
     if bmi_value < 18.5:
