@@ -23,7 +23,10 @@ def settings():
                 time.sleep(1)
                 st.rerun()
             safe_mongodb_operation(add_food_operation, "Failed to add food")
-    
+    if st.button("Refresh Settings Page"):
+        st.rerun()
+    st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+
     st.subheader("Delete Food")
     if 'delete_confirmed' not in st.session_state:
         st.session_state.delete_confirmed = False
