@@ -133,7 +133,7 @@ def nutrition_analysis():
             <strong>Current Streak:</strong> {current_streak} | <strong>Best Streak:</strong> {max_streak}
         </div>
         <small style="color: #666; text-align: center; display: block; margin-top: 5px;">
-            ✅ = Goal Met (within 15% of target) | ❌ = Goal Missed
+            ✅ = Goal Met (within 15% of target) | ❌ = Goal Missed \n
             This grid shows the current week (Sun-Sat) and updates as you log food daily. Older data outside this week won't appear.
         </small>
         """
