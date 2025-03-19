@@ -216,16 +216,23 @@ def nutrition_analysis():
     if st.button("Refresh Streak Table"):
         st.rerun()
     
-    # 7-Day Nutrient Trend (uses historical data, but only shown if toggled)
+    # Add Toggle for 7-Day Nutrient Trend Chart
     show_trend = st.checkbox("Show 7-Day Nutrient Trend", value=False)
-    if show_trend and not hist_df.empty:
-        st.subheader("7-Day Nutrient Trend")
-        fig_line = go.Figure()
-        for nutrient in ['Calories', 'Protein', 'Carbohydrates']:
-            fig_line.add_trace(go.Scatter(x=hist_df['Date'], y=hist_df[nutrient], mode='lines+markers', name=nutrient))
-        fig_line.update_layout(title='7-Day Nutrient Trend', xaxis_title='Date', yaxis_title='Amount')
-        st.plotly_chart(fig_line, key="nutrient_trend_chart")
-    
+    if show_trend:
+        if not hist_df.empty:
+            fig_line = go.Figure()
+            for nutrient in ['Calories', 'Protein', 'Carbohydrates']:
+                fig_line.add_trace(go.Scatter(x=hist_df['Date'], y=hist_df[nutrient], mode='lines+markers', name=nutrient))
+            fig_line.update_layout(title='7-Day Nutrient Trend', xaxis_title='Date', yaxis_title='Amount')
+            st.plotly_chart(fig_line, key="nutrient_trend_chart")
+            st.markdown(
+                "<small style='color: #666; text-align: center; display: block; margin-top: 5px;'>"
+                "This chart shows your nutrient intake over the past 7 days, updated daily."
+                "</small>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.info("No historical data available for the past 7 days to display the nutrient trend.")
     st.markdown("<div style='margin-bottom: 30px;'></div>", unsafe_allow_html=True)
     
     # Nutritional Status (resets at 12 AM)
