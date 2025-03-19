@@ -134,6 +134,7 @@ def nutrition_analysis():
         </div>
         <small style="color: #666; text-align: center; display: block; margin-top: 5px;">
             ✅ = Goal Met (within 15% of target) | ❌ = Goal Missed
+            This grid shows the current week (Sun-Sat) and updates as you log food daily. Older data outside this week won't appear.
         </small>
         """
         st.markdown(streak_html, unsafe_allow_html=True)
