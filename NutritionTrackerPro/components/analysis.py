@@ -317,7 +317,7 @@ def nutrition_analysis():
         st.markdown(f"<small style='color: {color};'>Your nutrition balance: {label}</small>", unsafe_allow_html=True)
     
     with col_predict:
-        st.markdown("<u><b><span style='font-size: 23px;'>Tomorrow's Predicted Calorie Intake:</span></b></u>", unsafe_allow_html=True)
+        st.markdown("<u><b><span style='font-size: 20px;'>Tomorrow's Predicted Calorie Intake:</span></b></u>", unsafe_allow_html=True)
         if len(hist_df) >= 3:
             try:
                 hist_df['Calories'] = pd.to_numeric(hist_df['Calories'], errors='coerce').fillna(0)
