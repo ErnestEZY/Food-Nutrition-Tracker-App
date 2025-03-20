@@ -101,9 +101,10 @@ def nutrition_analysis():
     else:
         hist_data = {}
         for log in historical_logs:
-            # Convert UTC timestamp to MST
-            log_date = log['date'].astimezone(MALAYSIA_TZ)
-            date = get_day_boundary(log_date).strftime('%Y-%m-%d')
+            # Convert UTC timestamp to MST, handling timezone-naive datetime.datetime objects
+            log_date = log['date']
+            log_date_mst = (pytz.UTC.localize(log_date) if log_date.tzinfo is None else log_date).astimezone(MALAYSIA_TZ)
+            date = get_day_boundary(log_date_mst).strftime('%Y-%m-%d')
             nutrients = log.get('nutrients', {})
             if date not in hist_data:
                 hist_data[date] = {'Calories': 0, 'Protein': 0, 'Carbohydrates': 0}
@@ -304,11 +305,11 @@ def nutrition_analysis():
     
     st.markdown("<div style='margin-bottom: 30px;'></div>", unsafe_allow_html=True)
     
-    # Personal Insights (resets at 12 AM)
+    # Personal Insights (Daily Nutrition Score resets at 12 AM, but prediction does not)
     st.subheader("Personal Insights")
-    st.markdown("<small style='color: #666;'>Note: Daily totals reset at 12 AM each day.</small>", unsafe_allow_html=True)
     col_score, col_predict = st.columns(2)
     with col_score:
+        st.markdown("<small style='color: #666;'>Note: Daily Nutrition Score resets at 12 AM each day.</small>", unsafe_allow_html=True)
         score = sum(max(0, 100 - abs(current - goal) / goal * 100) for _, (current, goal) in nutrient_values.items() if goal > 0) / 4
         score = round(score)
         label, color = ("Good", "green") if score >= 75 else ("Fair", "orange") if score >= 50 else ("Needs Improvement", "red")
@@ -327,7 +328,7 @@ def nutrition_analysis():
                 tomorrow = now + timedelta(days=1)
                 tomorrow_day = tomorrow.weekday()
                 
-                if hist_df['Calories'].std() < 50:
+                if hist_df['Calories'].std() < 100:  # Increased threshold from 50 to 100
                     forecast = hist_df['Calories'].mean() * random.uniform(0.95, 1.05)
                 else:
                     try:
