@@ -3,6 +3,15 @@ import pandas as pd
 from datetime import datetime, timedelta
 from database import daily_log_collection, safe_mongodb_operation
 import io
+import pytz
+
+# Define Malaysia timezone
+MALAYSIA_TZ = pytz.timezone('Asia/Kuala_Lumpur')
+
+def get_day_boundary(dt):
+    """Return the datetime of the most recent 12 AM (midnight) before or at the given datetime in MST."""
+    dt = dt.astimezone(MALAYSIA_TZ) if dt.tzinfo else MALAYSIA_TZ.localize(dt)
+    return dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
 def food_history():
     st.title("🕰️ Food History")
@@ -15,10 +24,12 @@ def food_history():
     if 'records_per_page' not in st.session_state:
         st.session_state.records_per_page = 10
     
-    # Check for logs within the last 14 days
-    two_weeks_ago = datetime.now() - timedelta(days=14)
+    # Check for logs within the last 14 days in MST
+    now = datetime.now(MALAYSIA_TZ)
+    two_weeks_ago = now - timedelta(days=14)
+    two_weeks_ago_utc = two_weeks_ago.astimezone(pytz.UTC)
     total_logs = safe_mongodb_operation(
-        lambda: daily_log_collection.count_documents({"date": {"$gte": two_weeks_ago}}),
+        lambda: daily_log_collection.count_documents({"date": {"$gte": two_weeks_ago_utc}}),
         "Failed to count logs"
     ) or 0
     
@@ -29,7 +40,7 @@ def food_history():
         total_pages = (total_logs + records_per_page - 1) // records_per_page
         
         history_logs = safe_mongodb_operation(
-            lambda: list(daily_log_collection.find({"date": {"$gte": two_weeks_ago}})
+            lambda: list(daily_log_collection.find({"date": {"$gte": two_weeks_ago_utc}})
                         .sort("date", -1)
                         .skip(st.session_state.history_page * records_per_page)
                         .limit(records_per_page)),
@@ -38,7 +49,12 @@ def food_history():
         
         if history_logs:
             history_df = pd.DataFrame(history_logs)
-            history_df['date'] = history_df['date'].apply(lambda x: x.strftime("%Y-%m-%d %H:%M"))
+            # Convert UTC timestamps to MST for display
+            history_df['date'] = history_df['date'].apply(
+                lambda x: (x.tz_localize('UTC') if x.tzinfo is None else x)
+                          .astimezone(MALAYSIA_TZ)
+                          .strftime("%Y-%m-%d %H:%M")
+            )
             history_df['calories'] = history_df['nutrients'].apply(lambda x: round(x.get('energy-kcal', 0), 1) if isinstance(x, dict) else 0)
             
             start_index = st.session_state.history_page * records_per_page + 1
@@ -72,11 +88,15 @@ def food_history():
             
             if st.button("Export Complete History to CSV"):
                 all_logs = safe_mongodb_operation(
-                    lambda: list(daily_log_collection.find({"date": {"$gte": two_weeks_ago}}).sort("date", -1)),
+                    lambda: list(daily_log_collection.find({"date": {"$gte": two_weeks_ago_utc}}).sort("date", -1)),
                     "Failed to retrieve logs for export"
                 ) or []
                 export_df = pd.DataFrame(all_logs)
-                export_df['date'] = export_df['date'].apply(lambda x: x.strftime("%Y-%m-%d %H:%M"))
+                export_df['date'] = export_df['date'].apply(
+                    lambda x: (x.tz_localize('UTC') if x.tzinfo is None else x)
+                              .astimezone(MALAYSIA_TZ)
+                              .strftime("%Y-%m-%d %H:%M")
+                )
                 export_df['calories'] = export_df['nutrients'].apply(lambda x: round(x.get('energy-kcal', 0), 1) if isinstance(x, dict) else 0)
                 export_display_df = export_df[display_columns].rename(columns=column_renames)
                 csv_buffer = io.StringIO()
@@ -87,10 +107,7 @@ def food_history():
                     file_name="food_history.csv",
                     mime="text/csv"
                 )
-            if st.button("Refresh History Page"):
-                st.rerun()
-            st.markdown("<div style='margin-bottom: 30px;'></div>", unsafe_allow_html=True)
-            
+    
     # Clear History Data Section
     st.subheader("Clear History Data")
     def toggle_confirmation():
@@ -106,8 +123,9 @@ def food_history():
         
         if delete_confirmed:
             def delete_history_operation():
-                two_weeks_ago = datetime.now() - timedelta(days=14)
-                result = daily_log_collection.delete_many({"date": {"$gte": two_weeks_ago}})
+                two_weeks_ago = datetime.now(MALAYSIA_TZ) - timedelta(days=14)
+                two_weeks_ago_utc = two_weeks_ago.astimezone(pytz.UTC)
+                result = daily_log_collection.delete_many({"date": {"$gte": two_weeks_ago_utc}})
                 st.session_state.show_delete_confirmation = False
                 st.session_state.history_page = 0
                 if result.deleted_count > 0:
@@ -121,3 +139,6 @@ def food_history():
         if st.button("Cancel"):
             st.session_state.show_delete_confirmation = False
             st.rerun()
+
+    if st.button("Refresh History Page"):
+        st.rerun()
