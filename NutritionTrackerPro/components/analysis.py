@@ -8,14 +8,19 @@ import random
 from statsmodels.tsa.arima.model import ARIMA
 from database import daily_log_collection
 from utils import DIET_GOALS, calculate_bmi_adjusted_goals
+import pytz
+
+# Define Malaysia timezone
+MALAYSIA_TZ = pytz.timezone('Asia/Kuala_Lumpur')
 
 def format_number(num):
-    if num >= 1000:  # Shrink to k for 4-digit numbers or more
+    if num >= 1000:
         return f"{num / 1000:.1f}k"
     return f"{num:.1f}"
 
 def get_day_boundary(dt):
-    """Return the datetime of the most recent 12 AM (midnight) before or at the given datetime."""
+    """Return the datetime of the most recent 12 AM (midnight) before or at the given datetime in MST."""
+    dt = dt.astimezone(MALAYSIA_TZ) if dt.tzinfo else MALAYSIA_TZ.localize(dt)
     return dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
 def nutrition_analysis():
@@ -28,7 +33,7 @@ def nutrition_analysis():
             st.rerun()
         st.stop()
     
-    st.subheader("Your Personal Analysis")
+    st.subheader("Personalize Your Analysis")
     st.info(f"Current BMI: {st.session_state.last_bmi:.1f}")
     diet_type = st.selectbox("Select Diet Type", list(DIET_GOALS.keys()))
     adjusted_goals = calculate_bmi_adjusted_goals(st.session_state.last_bmi, DIET_GOALS[diet_type])
@@ -36,15 +41,20 @@ def nutrition_analysis():
     st.info(f"Your BMI-adjusted daily goals: {adjusted_goals['calories']} calories, "
             f"{adjusted_goals['protein']}g protein, {adjusted_goals['carbs']}g carbs, {adjusted_goals['fat']}g fat")
     
-    # Define day boundaries (12 AM)
-    now = datetime.now()
-    today_start = get_day_boundary(now)  # 12 AM today
-    today_end = today_start + timedelta(days=1)  # 12 AM tomorrow
-    historical_start = today_start - timedelta(days=7)  # 12 AM 7 days ago
+    # Define day boundaries (12 AM) in MST
+    now = datetime.now(MALAYSIA_TZ)
+    today_start = get_day_boundary(now)  # 12 AM today in MST
+    today_end = today_start + timedelta(days=1)  # 12 AM tomorrow in MST
+    historical_start = today_start - timedelta(days=7)  # 12 AM 7 days ago in MST
+    
+    # Convert boundaries to UTC for querying
+    today_start_utc = today_start.astimezone(pytz.UTC)
+    today_end_utc = today_end.astimezone(pytz.UTC)
+    historical_start_utc = historical_start.astimezone(pytz.UTC)
 
     # Query logs for today (from 12 AM today to 12 AM tomorrow)
     today_logs = list(daily_log_collection.find({
-        "date": {"$gte": today_start, "$lt": today_end}
+        "date": {"$gte": today_start_utc, "$lt": today_end_utc}
     }))
 
     # Initialize total_nutrients and food_breakdown
@@ -65,7 +75,7 @@ def nutrition_analysis():
             total_nutrients["Carbohydrates"] += nutrients.get('carbohydrates', 0)
             total_nutrients["Fat"] += nutrients.get('fat', 0)
             food_breakdown[food_name] = nutrients.get('energy-kcal', 0)
-        st.markdown("<small style='color: #666;'>Note: Daily totals reset at 12 AM each day.</small>", unsafe_allow_html=True)
+    
         top_col1, top_col2 = st.columns(2)
         with top_col1:
             pie_df = pd.DataFrame.from_dict(total_nutrients, orient='index', columns=['Value'])
@@ -80,7 +90,7 @@ def nutrition_analysis():
     
     # Query historical logs (from 7 days ago at 12 AM to 12 AM today) for the streak
     historical_logs = list(daily_log_collection.find({
-        "date": {"$gte": historical_start, "$lt": today_start}
+        "date": {"$gte": historical_start_utc, "$lt": today_start_utc}
     }))
     # Include today's logs in historical_logs for streak calculation
     historical_logs.extend(today_logs)
@@ -91,7 +101,9 @@ def nutrition_analysis():
     else:
         hist_data = {}
         for log in historical_logs:
-            date = get_day_boundary(log['date']).strftime('%Y-%m-%d')
+            # Convert UTC timestamp to MST
+            log_date = log['date'].astimezone(MALAYSIA_TZ)
+            date = get_day_boundary(log_date).strftime('%Y-%m-%d')
             nutrients = log.get('nutrients', {})
             if date not in hist_data:
                 hist_data[date] = {'Calories': 0, 'Protein': 0, 'Carbohydrates': 0}
@@ -106,7 +118,7 @@ def nutrition_analysis():
     if not historical_logs:
         st.warning("No historical data available for the past 7 days to calculate streak.")
     else:
-        # Define goal check (within 15% of target)
+        # Define goal check (within 80%-130% of target)
         def goal_met(day_data):
             if day_data is None:
                 return False
@@ -136,7 +148,7 @@ def nutrition_analysis():
             return result
 
         # Build 7-day streak grid (Monday to Sunday)
-        today = get_day_boundary(now)  # Use 12 AM boundary as "today"
+        today = get_day_boundary(now)  # Use 12 AM boundary as "today" in MST
         start_day = today - timedelta(days=today.weekday())  # Start of current week (Monday)
         streak_grid = {}
 
@@ -207,7 +219,6 @@ def nutrition_analysis():
             <strong>Current Streak:</strong> {current_streak} | <strong>Best Streak:</strong> {max_streak}
         </div>
         <small style="color: #666; text-align: center; display: block; margin-top: 5px;">
-            This grid shows the current week (Sun-Sat) and updates as you log food daily. Older data outside this week won't appear. <br>
             ✅ = Goal Met (between 80% and 130% of target) | ❌ = Goal Missed
         </small>
         """
@@ -215,10 +226,11 @@ def nutrition_analysis():
     
     if st.button("Refresh Streak Table"):
         st.rerun()
-    
+
     # Add Toggle for 7-Day Nutrient Trend Chart
     show_trend = st.checkbox("Show 7-Day Nutrient Trend", value=False)
     if show_trend:
+        st.subheader("7-Day Nutrient Trend")
         if not hist_df.empty:
             fig_line = go.Figure()
             for nutrient in ['Calories', 'Protein', 'Carbohydrates']:
