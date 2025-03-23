@@ -310,6 +310,12 @@ def nutrition_analysis():
             st.write(nutrient)
             current_progress = min(1.0, current / goal) if goal > 0 else 0
             percentage = (current / goal * 100) if goal > 0 else 0
+            percentage_color = "#00cc00" if percentage > 0 else "#666666" 
+            arrow_color = "#00cc00"  
+            if percentage > 0:
+                percentage_display = f"(<span style='color: {arrow_color};'>↑</span>{percentage:.1f}%)"
+            else:
+                percentage_display = f"({percentage:.1f}%)"
             progress_html = f"""
             <div style="position: relative; width: 100%; height: 20px;">
                 <div style="position: absolute; width: 100%; height: 100%; background-color: #4e8cff; border-radius: 5px; z-index: 1; opacity: 0.7;" title="Goal: {goal:.1f}"></div>
@@ -319,15 +325,14 @@ def nutrition_analysis():
                 <span style="color: #ffeb3b;">{current:.1f}</span> / <span style="color: #4e8cff;">{goal:.1f}</span>
             </div>
             <div style="text-align: center; margin-top: 2px; font-size: 15px;">
-                <span style="color: #00cc00;">({percentage:.1f}%)</span>
+                <span style="color: {percentage_color};">{percentage_display}</span>
             </div>
             """
             st.markdown(progress_html, unsafe_allow_html=True)
     st.markdown("""
     <small style="color: #666; margin-top: 5px;">
         <span style="color: #ffeb3b;">Yellow</span> = Amount taken | 
-        <span style="color: #4e8cff;">Blue</span> = Adjusted goal | 
-        <span style="color: #00cc00;">Green</span> = Percentage of goal achieved
+        <span style="color: #4e8cff;">Blue</span> = Adjusted goal  
     </small>
     """, unsafe_allow_html=True)
     st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
