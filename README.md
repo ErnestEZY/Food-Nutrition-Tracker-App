@@ -1,5 +1,6 @@
 # Food-Nutrition-Tracker-App
 *Overview*
+
 The Food Nutrition Tracker Pro WebApp is a user-friendly application designed to help you monitor and analyze your daily food intake, track progress toward your dietary goals, and gain insights into your nutrition habits. Built with Streamlit, this app provides an interactive interface to log food, visualize nutrient trends, and receive personalized recommendations based on your BMI and diet preferences.
 
 *Features*
@@ -14,6 +15,7 @@ The Food Nutrition Tracker Pro WebApp is a user-friendly application designed to
 9. BMI-Based Recommendations: Receive dietary suggestions based on your BMI.
 
 *Prerequisites*
+
 To run the Nutrition Tracker WebApp, you’ll need the following:
 -Python 3.8 or higher
 -A MongoDB database (for storing food logs)
@@ -29,6 +31,7 @@ To run the Nutrition Tracker WebApp, you’ll need the following:
 7. Review personalized insights and recommendations.
 
 *Notes*
+
 •The app uses Malaysia Standard Time (MST) for date and time calculations.
 •Daily totals reset at 12 AM each day, but historical data is retained for trend analysis.
 •Ensure your MongoDB database is properly configured to store and retrieve food logs.
