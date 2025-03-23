@@ -17,9 +17,9 @@ The Food Nutrition Tracker Pro WebApp is a user-friendly application designed to
 *Prerequisites*
 
 To run the Nutrition Tracker WebApp, you’ll need the following:
--Python 3.8 or higher
--A MongoDB database (for storing food logs)
--Streamlit and other required Python libraries (listed in requirements.txt)
+I. Python 3.8 or higher
+II. A MongoDB database (for storing food logs)
+III. Streamlit and other required Python libraries (listed in requirements.txt)
 
 *Usage*
 1. Calculate Your BMI: Start on the Home page by entering your height and weight to calculate your BMI.
@@ -31,7 +31,6 @@ To run the Nutrition Tracker WebApp, you’ll need the following:
 7. Review personalized insights and recommendations.
 
 *Notes*
-
-•The app uses Malaysia Standard Time (MST) for date and time calculations.
-•Daily totals reset at 12 AM each day, but historical data is retained for trend analysis.
-•Ensure your MongoDB database is properly configured to store and retrieve food logs.
+a. The app uses Malaysia Standard Time (MST) for date and time calculations.
+b. Daily totals reset at 12 AM each day, but historical data is retained for trend analysis.
+c. Ensure your MongoDB database is properly configured to store and retrieve food logs.
