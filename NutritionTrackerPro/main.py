@@ -17,6 +17,9 @@ def main():
         st.session_state.tip_time = 0
     if 'page' not in st.session_state:
         st.session_state.page = "Home"
+    # Initialize a flag to track if this is the first load
+    if 'first_load' not in st.session_state:
+        st.session_state.first_load = True
 
     # Define pages
     pages = {
@@ -26,6 +29,20 @@ def main():
         "Food History": food_history,
         "Settings": settings
     }
+
+    # Show a random tip on first load
+    nutrition_tips = [
+        "Drink 8 glasses of water daily!",
+        "Include protein in every meal.",
+        "Eat more colorful vegetables.",
+        "Balance your macronutrients.",
+        "Avoid processed foods."
+    ]
+    if st.session_state.first_load:
+        st.session_state.show_tip = True
+        st.session_state.tip_text = random.choice(nutrition_tips)
+        st.session_state.tip_time = time.time()
+        st.session_state.first_load = False  # Set to False after the first load
 
     # Navigation callback
     def on_page_change():
@@ -43,13 +60,6 @@ def main():
 
     # Daily Tip Button
     if st.sidebar.button("🌟 Daily Nutrition Tip"):
-        nutrition_tips = [
-            "Drink 8 glasses of water daily!",
-            "Include protein in every meal.",
-            "Eat more colorful vegetables.",
-            "Balance your macronutrients.",
-            "Avoid processed foods."
-        ]
         st.session_state.show_tip = True
         st.session_state.tip_text = random.choice(nutrition_tips)
         st.session_state.tip_time = time.time()
