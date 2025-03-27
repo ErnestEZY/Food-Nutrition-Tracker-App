@@ -57,6 +57,11 @@ def nutrition_analysis():
         "date": {"$gte": today_start_utc, "$lt": today_end_utc}
     }))
 
+    # Make today_logs dates offset-aware (UTC)
+    for log in today_logs:
+        if log['date'].tzinfo is None:
+            log['date'] = pytz.UTC.localize(log['date'])
+
     # Initialize total_nutrients and food_breakdown
     total_nutrients = {"Calories": 0, "Protein": 0, "Carbohydrates": 0, "Fat": 0}
     food_breakdown = {}
@@ -92,6 +97,10 @@ def nutrition_analysis():
     historical_logs = list(daily_log_collection.find({
         "date": {"$gte": historical_start_utc, "$lt": today_start_utc}
     }))
+    # Make historical_logs dates offset-aware (UTC)
+    for log in historical_logs:
+        if log['date'].tzinfo is None:
+            log['date'] = pytz.UTC.localize(log['date'])
     # Include today's logs in historical_logs for streak calculation
     historical_logs.extend(today_logs)
     
@@ -101,9 +110,8 @@ def nutrition_analysis():
     else:
         hist_data = {}
         for log in historical_logs:
-            # Convert UTC timestamp to MST, handling timezone-naive datetime.datetime objects
-            log_date = log['date']
-            log_date_mst = (pytz.UTC.localize(log_date) if log_date.tzinfo is None else log_date).astimezone(MALAYSIA_TZ)
+            # Convert UTC timestamp to MST for aggregation
+            log_date_mst = log['date'].astimezone(MALAYSIA_TZ)
             date = get_day_boundary(log_date_mst).strftime('%Y-%m-%d')
             nutrients = log.get('nutrients', {})
             if date not in hist_data:
@@ -124,17 +132,14 @@ def nutrition_analysis():
         def goal_met(day_data):
             if day_data is None:
                 return False
-    
             if not isinstance(day_data, dict):
                 return False
-    
             required_keys = ['Calories', 'Protein', 'Carbohydrates', 'Fat']
             if not all(key in day_data for key in required_keys):
                 return False
-    
-            if any(day_data.get(key, 0) == 0 for key in required_keys):
+            # Check if all nutrients are 0 (treat as no data for goal_met, but we'll handle this separately)
+            if all(day_data.get(key, 0) == 0 for key in required_keys):
                 return False
-            
             conditions = []
             for nutrient, goal_key in [('Calories', 'calories'), ('Protein', 'protein'), ('Carbohydrates', 'carbs'), ('Fat', 'fat')]:
                 actual = day_data.get(nutrient, 0)
@@ -148,9 +153,28 @@ def nutrition_analysis():
             result = all(conditions)
             return result
 
-        # Build 7-day streak grid (Monday to Sunday)
+        # Determine the current week (Mon-Sun)
         today = get_day_boundary(now)  # Use 12 AM boundary as "today" in MST
         start_day = today - timedelta(days=today.weekday())  # Start of current week (Monday)
+        week_identifier = start_day.strftime('%Y-%m-%d')  # Monday's date as the week identifier
+
+        # Determine today's position in the week (0 = Monday, 6 = Sunday)
+        today_index = today.weekday()  # Thursday = 3
+
+        # Initialize session state for streak tracking
+        if 'streak_week' not in st.session_state:
+            st.session_state.streak_week = week_identifier
+            st.session_state.current_streak = 0
+            st.session_state.best_streak = 0
+        else:
+            # Check if the week has changed
+            if st.session_state.streak_week != week_identifier:
+                # Reset streaks at the start of a new week
+                st.session_state.streak_week = week_identifier
+                st.session_state.current_streak = 0
+                st.session_state.best_streak = 0
+
+        # Build 7-day streak grid (Monday to Sunday)
         streak_grid = {}
         today_str = today.strftime('%Y-%m-%d')
         today_in_hist_df = False
@@ -166,35 +190,89 @@ def nutrition_analysis():
                 'Fat': [total_nutrients['Fat']],
             })
             hist_df = pd.concat([hist_df, today_row], ignore_index=True)
+
+        # Check for logs for each day in the current week
         for i in range(7):
-            day = (start_day + timedelta(days=i)).strftime('%Y-%m-%d')
+            day = start_day + timedelta(days=i)
+            day_str = day.strftime('%Y-%m-%d')
+            day_start = day.astimezone(pytz.UTC)
+            day_end = (day + timedelta(days=1)).astimezone(pytz.UTC)
+
+            # If the day is in the future (after today), mark it as blank
+            if i > today_index:
+                streak_grid[day_str] = ' '
+                continue
+
+            # Check if there are any logs for this day
+            day_logs = [log for log in historical_logs if day_start <= log['date'] < day_end]
+            has_logs = len(day_logs) > 0
+
             day_data = None
             if not hist_df.empty:
-                matches = hist_df[hist_df['Date'] == day]
+                matches = hist_df[hist_df['Date'] == day_str]
                 if not matches.empty:
                     day_data = matches.iloc[0].to_dict()
-            is_today = day == today_str
+            is_today = day_str == today_str
             if is_today:
                 if day_data is None and sum(total_nutrients.values()) > 0:
                     day_data = {
-                        'Date': day,
+                        'Date': day_str,
                         'Calories': total_nutrients['Calories'],
                         'Protein': total_nutrients['Protein'],
                         'Carbohydrates': total_nutrients['Carbohydrates'],
                         'Fat': total_nutrients['Fat'],
                     }
-            streak_result = goal_met(day_data) if day_data is not None else False
-            streak_grid[day] = '✅' if streak_result else '❌' if day_data is not None else ' '
 
-        # Calculate current streak
+            # If there are no logs for the day, mark it as ❌ (missed)
+            if not has_logs and not is_today:
+                streak_grid[day_str] = '❌'  # No logs for the day, mark as missed
+            else:
+                # If there are logs (or it's today with data), evaluate the goal
+                streak_result = goal_met(day_data) if day_data is not None else False
+                streak_grid[day_str] = '✅' if streak_result else '❌'
+
+        # Calculate current streak and best streak for the days that have occurred (up to today)
         current_streak = 0
         max_streak = 0
-        for day_status in reversed(list(streak_grid.values())):
+        current_sequence = 0
+        last_miss_index = -1
+
+        # First pass: Find the most recent ❌ and calculate the best streak (only for days up to today)
+        streak_values = list(streak_grid.values())[:today_index + 1]  # Only consider Mon to Thu
+        for i in range(len(streak_values)):
+            day_status = streak_values[i]
             if day_status == '✅':
-                current_streak += 1
-                max_streak = max(max_streak, current_streak)
+                current_sequence += 1
+                max_streak = max(max_streak, current_sequence)
             else:
-                current_streak = 0
+                current_sequence = 0
+            if day_status == '❌':
+                last_miss_index = i
+
+        # Second pass: Calculate the current streak (count consecutive ✅ days after the most recent ❌)
+        if last_miss_index == -1:
+            # No ❌ found, count all consecutive ✅ days from the end
+            for day_status in reversed(streak_values):
+                if day_status == '✅':
+                    current_streak += 1
+                else:
+                    break
+        else:
+            # Count consecutive ✅ days after the most recent ❌
+            current_sequence = 0
+            for i in range(last_miss_index + 1, len(streak_values)):
+                day_status = streak_values[i]
+                if day_status == '✅':
+                    current_sequence += 1
+                    current_streak = current_sequence
+                else:
+                    current_sequence = 0
+                    break
+
+        # Update session state with the new streak values
+        st.session_state.current_streak = current_streak
+        st.session_state.best_streak = max(st.session_state.best_streak, max_streak)
+
         days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
         day_html = ''.join([f"<td>{days[i]}</td>" for i in range(7)])
         status_html = ''.join([f"<td>{streak_grid[(start_day + timedelta(days=i)).strftime('%Y-%m-%d')]}</td>" for i in range(7)])
@@ -212,13 +290,14 @@ def nutrition_analysis():
             </tr>
         </table>
         <div style="text-align: center; padding: 10px; background-color: #f9f9f9; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px; color: black;">
-            <strong>Current Streak:</strong> {current_streak} | <strong>Best Streak:</strong> {max_streak}
+            <strong>Current Streak:</strong> {st.session_state.current_streak} | <strong>Best Streak:</strong> {st.session_state.best_streak}
         </div>
         <small style="color: #666; text-align: center; display: block; margin-top: 5px;">
             ✅ = Goal Met (between 80% and 130% of target) | ❌ = Goal Missed
         </small>
         """
         st.markdown(streak_html, unsafe_allow_html=True)
+
     if st.button("Refresh Streak Table"):
         st.rerun()
 
@@ -321,18 +400,18 @@ def nutrition_analysis():
                 <div style="position: absolute; width: 100%; height: 100%; background-color: #4e8cff; border-radius: 5px; z-index: 1; opacity: 0.7;" title="Goal: {goal:.1f}"></div>
                 <div style="position: absolute; width: {current_progress * 100}%; height: 100%; background-color: #ffeb3b; border-radius: 5px; z-index: 2; opacity: 0.9;" title="Current: {current:.1f}"></div>
             </div>
-            <div style="text-align: center; margin-top: 5px; font-size: 23px;">
+            <div style="text-align: center; margin-top: 5px; font-size: 16px;">
                 <span style="color: #ffeb3b;">{current:.1f}</span> / <span style="color: #4e8cff;">{goal:.1f}</span>
             </div>
-            <div style="text-align: center; margin-top: 2px; font-size: 15px;">
+            <div style="text-align: center; margin-top: 2px;">
                 <span style="color: {percentage_color};">{percentage_display}</span>
             </div>
             """
             st.markdown(progress_html, unsafe_allow_html=True)
     st.markdown("""
-    <small style="color: #666; margin-top: 5px;">
+    <small style="color: #666;">
         <span style="color: #ffeb3b;">Yellow</span> = Amount taken | 
-        <span style="color: #4e8cff;">Blue</span> = Adjusted goal  
+        <span style="color: #4e8cff;">Blue</span> = Adjusted goal 
     </small>
     """, unsafe_allow_html=True)
     st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
