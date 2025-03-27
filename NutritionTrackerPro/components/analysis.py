@@ -45,12 +45,17 @@ def nutrition_analysis():
     now = datetime.now(MALAYSIA_TZ)
     today_start = get_day_boundary(now)  # 12 AM today in MST
     today_end = today_start + timedelta(days=1)  # 12 AM tomorrow in MST
-    historical_start = today_start - timedelta(days=7)  # 12 AM 7 days ago in MST
     
+    # Determine the current week (Mon-Sun) for the goal achievement chart
+    today = get_day_boundary(now)
+    start_of_week = today - timedelta(days=today.weekday())  # Monday of the current week
+    end_of_week = start_of_week + timedelta(days=7)  # Monday of the next week (exclusive)
+    start_of_week_utc = start_of_week.astimezone(pytz.UTC)
+    end_of_week_utc = end_of_week.astimezone(pytz.UTC)
+
     # Convert boundaries to UTC for querying
     today_start_utc = today_start.astimezone(pytz.UTC)
     today_end_utc = today_end.astimezone(pytz.UTC)
-    historical_start_utc = historical_start.astimezone(pytz.UTC)
 
     # Query logs for today (from 12 AM today to 12 AM tomorrow)
     today_logs = list(daily_log_collection.find({
@@ -93,9 +98,9 @@ def nutrition_analysis():
             fig_bar.update_yaxes(title='Calories')
             st.plotly_chart(fig_bar)
     
-    # Query historical logs (from 7 days ago at 12 AM to 12 AM today) for the streak
+    # Query historical logs for the current week (from Monday of the current week to 12 AM today) for the streak and other sections
     historical_logs = list(daily_log_collection.find({
-        "date": {"$gte": historical_start_utc, "$lt": today_start_utc}
+        "date": {"$gte": start_of_week_utc, "$lt": today_start_utc}
     }))
     # Make historical_logs dates offset-aware (UTC)
     for log in historical_logs:
@@ -301,75 +306,97 @@ def nutrition_analysis():
     if st.button("Refresh Streak Table"):
         st.rerun()
 
-    # Add Toggle for Daily Goal Achievement Trend Chart
+# Add Toggle for Daily Goal Achievement Trend Chart
     show_goal_trend = st.checkbox("Show Daily Goal Achievement Trend", value=False)
     if show_goal_trend:
-        st.subheader("Daily Goal Achievement Trend (Past 7 Days)")
+        st.subheader("Daily Goal Achievement Trend (Current Week)")
         if not hist_df.empty:
-            goal_data = {
-                'Date': [],
-                'Calories': [],
-                'Protein': [],
-                'Carbohydrates': [],
-                'Fat': []
-            }
-            for _, row in hist_df.iterrows():
-                date = row['Date']
-                goal_data['Date'].append(date)
-                for nutrient, goal_key in [('Calories', 'calories'), ('Protein', 'protein'), ('Carbohydrates', 'carbs'), ('Fat', 'fat')]:
-                    actual = row.get(nutrient, 0)
-                    target = adjusted_goals.get(goal_key, 0)
-                    percentage = (actual / target * 100) if target > 0 else 0
-                    goal_data[nutrient].append(min(150, percentage))
+            # Filter hist_df to include only the current week (Mon-Sun)
+            hist_df['Date'] = pd.to_datetime(hist_df['Date'])
+            start_of_week_dt = pd.to_datetime(start_of_week.strftime('%Y-%m-%d'))
+            end_of_week_dt = pd.to_datetime(end_of_week.strftime('%Y-%m-%d'))
+            current_week_df = hist_df[
+                (hist_df['Date'] >= start_of_week_dt) & 
+                (hist_df['Date'] < end_of_week_dt)
+            ]
 
-            goal_df = pd.DataFrame(goal_data)
+            if not current_week_df.empty:
+                goal_data = {
+                    'Date': [],
+                    'Calories': [],
+                    'Protein': [],
+                    'Carbohydrates': [],
+                    'Fat': []
+                }
+                for _, row in current_week_df.iterrows():
+                    date = row['Date'].strftime('%Y-%m-%d')
+                    goal_data['Date'].append(date)
+                    for nutrient, goal_key in [('Calories', 'calories'), ('Protein', 'protein'), ('Carbohydrates', 'carbs'), ('Fat', 'fat')]:
+                        actual = row.get(nutrient, 0)
+                        target = adjusted_goals.get(goal_key, 0)
+                        percentage = (actual / target * 100) if target > 0 else 0
+                        goal_data[nutrient].append(min(150, percentage))
 
-            fig_goal_trend = go.Figure()
-            for nutrient in ['Calories', 'Protein', 'Carbohydrates', 'Fat']:
-                fig_goal_trend.add_trace(go.Bar(
-                    y=goal_df['Date'],
-                    x=goal_df[nutrient],
-                    name=nutrient,
-                    orientation='h',
-                ))
+                # Add today's data if not already in current_week_df
+                today_str = today.strftime('%Y-%m-%d')
+                if today_str not in goal_data['Date'] and sum(total_nutrients.values()) > 0:
+                    goal_data['Date'].append(today_str)
+                    for nutrient, goal_key in [('Calories', 'calories'), ('Protein', 'protein'), ('Carbohydrates', 'carbs'), ('Fat', 'fat')]:
+                        actual = total_nutrients.get(nutrient, 0)
+                        target = adjusted_goals.get(goal_key, 0)
+                        percentage = (actual / target * 100) if target > 0 else 0
+                        goal_data[nutrient].append(min(150, percentage))
 
-            fig_goal_trend.add_shape(
-                type="rect",
-                xref="x", yref="paper",
-                x0=80, x1=130,
-                y0=0, y1=1,
-                fillcolor="LightGreen",
-                opacity=0.3,
-                layer="below",
-                line_width=0,
-            )
-            fig_goal_trend.add_shape(
-                type="line",
-                xref="x", yref="paper",
-                x0=100, x1=100,
-                y0=0, y1=1,
-                line=dict(color="Black", dash="dash")
-            )
-            fig_goal_trend.update_layout(
-                title='Daily Goal Achievement Trend (Past 7 Days)',
-                xaxis_title='Percentage of Goal (%)',
-                yaxis_title='Date',
-                xaxis=dict(range=[0, 150]),
-                height=400,
-                barmode='group',
-                showlegend=True,
-                margin=dict(t=50, l=25, r=25, b=25),
-            )
-            st.plotly_chart(fig_goal_trend, key="goal_trend_chart")
-            st.markdown(
-                "<small style='color: #666; text-align: center; display: block; margin-top: 5px;'>"
-                "This chart shows the percentage of your daily goals achieved for each nutrient over the past 7 days. "
-                "The green band indicates the acceptable range (80%–130%)."
-                "</small>",
-                unsafe_allow_html=True
-            )
+                goal_df = pd.DataFrame(goal_data)
+
+                fig_goal_trend = go.Figure()
+                for nutrient in ['Calories', 'Protein', 'Carbohydrates', 'Fat']:
+                    fig_goal_trend.add_trace(go.Bar(
+                        y=goal_df['Date'],
+                        x=goal_df[nutrient],
+                        name=nutrient,
+                        orientation='h',
+                    ))
+
+                fig_goal_trend.add_shape(
+                    type="rect",
+                    xref="x", yref="paper",
+                    x0=80, x1=130,
+                    y0=0, y1=1,
+                    fillcolor="LightGreen",
+                    opacity=0.3,
+                    layer="below",
+                    line_width=0,
+                )
+                fig_goal_trend.add_shape(
+                    type="line",
+                    xref="x", yref="paper",
+                    x0=100, x1=100,
+                    y0=0, y1=1,
+                    line=dict(color="Black", dash="dash")
+                )
+                fig_goal_trend.update_layout(
+                    title='Daily Goal Achievement Trend (Current Week)',
+                    xaxis_title='Percentage of Goal (%)',
+                    yaxis_title='Date',
+                    xaxis=dict(range=[0, 150]),
+                    height=400,
+                    barmode='group',
+                    showlegend=True,
+                    margin=dict(t=50, l=25, r=25, b=25),
+                )
+                st.plotly_chart(fig_goal_trend, key="goal_trend_chart")
+                st.markdown(
+                    "<small style='color: #666; text-align: center; display: block; margin-top: 5px;'>"
+                    "This chart shows the percentage of your daily goals achieved for each nutrient over the current week. "
+                    "The green band indicates the acceptable range (80%–130%)."
+                    "</small>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.info("No data available for the current week to display the goal achievement trend.")
         else:
-            st.info("No historical data available for the past 7 days to display the goal achievement trend.")
+            st.info("No data available for the current week to display the goal achievement trend.")
     st.markdown("<div style='margin-bottom: 30px;'></div>", unsafe_allow_html=True)
     
     # Daily Progress (resets at 12 AM) - Enhanced with percentage status
