@@ -83,3 +83,7 @@ def home_page():
                 st.success(f"BMI updated to {st.session_state.last_bmi:.1f}")
                 time.sleep(1)
                 st.rerun()
+     st.markdown(
+             "<small style='color: #FF9800;'>Note: You must enter your BMI before accessing the Daily Food Log and Nutrition Analysis pages.</small>",
+             unsafe_allow_html=True
+     )
