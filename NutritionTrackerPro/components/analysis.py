@@ -462,6 +462,35 @@ def nutrition_analysis():
         else:
             st.info("No historical data available for the past 7 days to display the nutrient trend.")
     st.markdown("<div style='margin-bottom: 30px;'></div>", unsafe_allow_html=True)
+
+    # Query all historical logs (no time restriction, for prediction only)
+    historical_logs_all = list(daily_log_collection.find({
+        "date": {"$lt": today_start_utc}  # All logs before today
+    }))
+    # Make historical_logs_all dates offset-aware (UTC)
+    for log in historical_logs_all:
+        if log['date'].tzinfo is None:
+            log['date'] = pytz.UTC.localize(log['date'])
+    # Include today's logs
+    historical_logs_all.extend(today_logs)
+
+    # Build hist_df_all for prediction (using all historical data)
+    if not historical_logs_all:
+        hist_df_all = pd.DataFrame(columns=['Date', 'Calories', 'Protein', 'Carbohydrates', 'Fat'])
+    else:
+        hist_data_all = {}
+        for log in historical_logs_all:
+            log_date_mst = log['date'].astimezone(MALAYSIA_TZ)
+            date = get_day_boundary(log_date_mst).strftime('%Y-%m-%d')
+            nutrients = log.get('nutrients', {})
+            if date not in hist_data_all:
+                hist_data_all[date] = {'Calories': 0, 'Protein': 0, 'Carbohydrates': 0, 'Fat': 0}
+            hist_data_all[date]['Calories'] += nutrients.get('energy-kcal', 0)
+            hist_data_all[date]['Protein'] += nutrients.get('proteins', 0)
+            hist_data_all[date]['Carbohydrates'] += nutrients.get('carbohydrates', 0)
+            hist_data_all[date]['Fat'] += nutrients.get('fat', 0)
+        hist_df_all = pd.DataFrame.from_dict(hist_data_all, orient='index').reset_index()
+        hist_df_all.columns = ['Date', 'Calories', 'Protein', 'Carbohydrates', 'Fat']
     
     # Personal Insights (Daily Nutrition Score resets at 12 AM, but prediction does not)
     st.subheader("Personal Insights")
@@ -474,45 +503,45 @@ def nutrition_analysis():
         st.metric("Daily Nutrition Score", f"{score}/100", label, delta_color="off")
         st.markdown(f"<small style='color: {color};'>Your nutrition balance: {label}</small>", unsafe_allow_html=True)
     with col_predict:
-        st.markdown("<u>Tomorrow's Predicted Calorie Intake:</u>", unsafe_allow_html=True)
-        if len(hist_df) >= 3:
+        st.markdown("<u>Tomorrow's Predicted Calorie Intake <br> (Based on Food History):</u>", unsafe_allow_html=True)
+        if len(hist_df_all) >= 3:
             try:
-                hist_df['Calories'] = pd.to_numeric(hist_df['Calories'], errors='coerce').fillna(0)
-                hist_df['DayOfWeek'] = pd.to_datetime(hist_df['Date']).dt.dayofweek
-                hist_df['Rolling_Mean'] = hist_df['Calories'].rolling(window=3, min_periods=1).mean()
-                hist_df['Rolling_Std'] = hist_df['Calories'].rolling(window=3, min_periods=1).std().fillna(0)
-                
+                hist_df_all['Calories'] = pd.to_numeric(hist_df_all['Calories'], errors='coerce').fillna(0)
+                hist_df_all['DayOfWeek'] = pd.to_datetime(hist_df_all['Date']).dt.dayofweek
+                hist_df_all['Rolling_Mean'] = hist_df_all['Calories'].rolling(window=3, min_periods=1).mean()
+                hist_df_all['Rolling_Std'] = hist_df_all['Calories'].rolling(window=3, min_periods=1).std().fillna(0)
+            
                 tomorrow = now + timedelta(days=1)
                 tomorrow_day = tomorrow.weekday()
-                
-                if hist_df['Calories'].std() < 100:
-                    forecast = hist_df['Calories'].mean() * random.uniform(0.95, 1.05)
+            
+                if hist_df_all['Calories'].std() < 100:
+                    forecast = hist_df_all['Calories'].mean() * random.uniform(0.95, 1.05)
                 else:
                     try:
-                        model = ARIMA(hist_df['Calories'], order=(1, 1, 1))
+                        model = ARIMA(hist_df_all['Calories'], order=(1, 1, 1))
                         forecast = model.fit(maxiter=100).forecast(steps=1)[0]
                     except:
                         try:
-                            model = ARIMA(hist_df['Calories'], order=(1, 1, 0))
+                            model = ARIMA(hist_df_all['Calories'], order=(1, 1, 0))
                             forecast = model.fit(maxiter=100).forecast(steps=1)[0]
                         except:
-                            weights = np.linspace(0, 1, len(hist_df))
+                            weights = np.linspace(0, 1, len(hist_df_all))
                             weights = weights / weights.sum()
-                            forecast = (hist_df['Calories'] * weights).sum()
+                            forecast = (hist_df_all['Calories'] * weights).sum()
                     if forecast < 500 or forecast > 5000:
-                        forecast = hist_df['Calories'].mean()
-                    if len(hist_df) >= 5:
-                        same_day_data = hist_df[pd.to_datetime(hist_df['Date']).dt.dayofweek == tomorrow_day]
+                        forecast = hist_df_all['Calories'].mean()
+                    if len(hist_df_all) >= 5:
+                        same_day_data = hist_df_all[pd.to_datetime(hist_df_all['Date']).dt.dayofweek == tomorrow_day]
                         if not same_day_data.empty:
                             forecast = 0.7 * forecast + 0.3 * same_day_data['Calories'].mean()
-                st.write(f"**{forecast:.0f} calories** (prediction for {tomorrow.strftime('%A')})")
-                std_dev = hist_df['Calories'].std() if len(hist_df) > 1 else hist_df['Calories'].mean() * 0.1
+                st.write(f"🏷️ **{forecast:.0f} calories** (prediction for {tomorrow.strftime('%A')})")
+                std_dev = hist_df_all['Calories'].std() if len(hist_df_all) > 1 else hist_df_all['Calories'].mean() * 0.1
                 st.write(f"Range: {max(0, forecast - 1.5 * std_dev):.0f} - {forecast + 1.5 * std_dev:.0f} calories")
-                last_value = hist_df['Calories'].iloc[-1]
+                last_value = hist_df_all['Calories'].iloc[-1]
                 trend = "📈 Trending up" if forecast > last_value * 1.1 else "📉 Trending down" if forecast < last_value * 0.9 else "➡️ Stable"
                 st.markdown(f"{trend} compared to today")
             except Exception:
-                forecast = hist_df['Calories'].mean() * random.uniform(0.9, 1.1)
+                forecast = hist_df_all['Calories'].mean() * random.uniform(0.9, 1.1)
                 st.write(f"{forecast:.0f} calories (simplified estimate)")
         else:
             st.write("Not enough data for prediction (minimum 3 days required)")
