@@ -536,7 +536,7 @@ def nutrition_analysis():
                             forecast = 0.7 * forecast + 0.3 * same_day_data['Calories'].mean()
                 st.write(f"🏷️ **{forecast:.0f} calories** (prediction for {tomorrow.strftime('%A')})")
                 std_dev = hist_df_all['Calories'].std() if len(hist_df_all) > 1 else hist_df_all['Calories'].mean() * 0.1
-                st.write(f"Range: {max(0, forecast - 1.5 * std_dev):.0f} - {forecast + 1.5 * std_dev:.0f} calories")
+                st.write(f"🔹Range: {max(0, forecast - 1.5 * std_dev):.0f} - {forecast + 1.5 * std_dev:.0f} calories")
                 last_value = hist_df_all['Calories'].iloc[-1]
                 trend = "📈 Trending up" if forecast > last_value * 1.1 else "📉 Trending down" if forecast < last_value * 0.9 else "➡️ Stable"
                 st.markdown(f"{trend} compared to today")
