@@ -65,7 +65,7 @@ def daily_food_log():
                         }
                     }
                 },
-                {"$limit": 20} 
+                {"$limit": 30} 
             ]))
 
             # Search using the brands index
@@ -79,7 +79,7 @@ def daily_food_log():
                         }
                     }
                 },
-                {"$limit": 20}
+                {"$limit": 30}
             ]))
 
             # Combine results and deduplicate by _id
