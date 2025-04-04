@@ -55,7 +55,15 @@ def daily_food_log():
     if search_query:
         def search_food_operation():
             return list(food_collection.aggregate([
-                {"$search": {"index": "product_name", "text": {"query": search_query, "path": "product_name"}}},
+                {
+                    "$search": {
+                        "index": "product_name",
+                        "text": {
+                            "query": search_query,
+                            "path": ["product_name", "brands"]
+                        }
+                    }
+                },
                 {"$limit": 20}
             ]))
         search_results = safe_mongodb_operation(search_food_operation, "Food search failed") or []
