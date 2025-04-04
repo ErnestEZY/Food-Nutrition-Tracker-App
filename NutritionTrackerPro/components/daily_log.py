@@ -54,18 +54,38 @@ def daily_food_log():
     
     if search_query:
         def search_food_operation():
-            return list(food_collection.aggregate([
+            # Search using the product_name index
+            product_name_results = list(food_collection.aggregate([
                 {
                     "$search": {
                         "index": "product_name",
                         "text": {
                             "query": search_query,
-                            "path": ["product_name", "brands"]
+                            "path": "product_name"
+                        }
+                    }
+                },
+                {"$limit": 20} 
+            ]))
+
+            # Search using the brands index
+            brands_results = list(food_collection.aggregate([
+                {
+                    "$search": {
+                        "index": "brands",
+                        "text": {
+                            "query": search_query,
+                            "path": "brands"
                         }
                     }
                 },
                 {"$limit": 20}
             ]))
+
+            # Combine results and deduplicate by _id
+            combined_results = {doc["_id"]: doc for doc in product_name_results + brands_results}.values()
+            return list(combined_results)[:20]  # Limit total results to 20
+
         search_results = safe_mongodb_operation(search_food_operation, "Food search failed") or []
         search_results = [food for food in search_results if has_valid_brand(food)]
         
