@@ -131,12 +131,12 @@ def food_history():
                 st.session_state.show_delete_latest_confirmation = True
             
             if not st.session_state.show_delete_latest_confirmation:
-                st.button("Delete Latest Food", on_click=toggle_delete_latest_confirmation)
+                st.button("Remove Latest Food", on_click=toggle_delete_latest_confirmation)
             
             if st.session_state.show_delete_latest_confirmation:
-                st.warning(f"⚠️ This action will permanently delete the latest food entry: {latest_food_name}!")
-                st.info("📌 Check the box below to confirm deletion.")
-                delete_latest_confirmed = st.checkbox(f"I understand and want to delete the latest food entry: {latest_food_name}", key="confirm_delete_latest")
+                st.warning(f"⚠️ This action will remove the latest food entry: {latest_food_name}!")
+                st.info("📌 Check the box below to confirm removal.")
+                delete_latest_confirmed = st.checkbox(f"I understand and want to remove the latest food entry: {latest_food_name}", key="confirm_delete_latest")
                 
                 if delete_latest_confirmed:
                     def delete_latest_food_operation():
@@ -148,8 +148,8 @@ def food_history():
                         if result.deleted_count == 1:
                             st.success(f"Successfully deleted the latest food entry: {latest_food_name}")
                         else:
-                            st.warning("Failed to delete the latest food entry.")
-                    safe_mongodb_operation(delete_latest_food_operation, "Failed to delete the latest food entry")
+                            st.warning("Failed to remove the latest food entry.")
+                    safe_mongodb_operation(delete_latest_food_operation, "Failed to remove the latest food entry")
                     if st.button("Done"):
                         st.rerun()
                 
@@ -166,9 +166,9 @@ def food_history():
         st.button("Clear All History Data", on_click=toggle_confirmation)
     
     if st.session_state.show_delete_confirmation:
-        st.warning("⚠️ This action will permanently delete all history data!")
-        st.info("📌 Check the box below to delete your food history data.")
-        delete_confirmed = st.checkbox("I understand and want to delete all history data", key="confirm_delete_history")
+        st.warning("⚠️ This action will permanently clear all history data!")
+        st.info("📌 Check the box below to clear your food history data.")
+        delete_confirmed = st.checkbox("I understand and want to clear all history data", key="confirm_delete_history")
         
         if delete_confirmed:
             def delete_history_operation():
@@ -176,10 +176,10 @@ def food_history():
                 st.session_state.show_delete_confirmation = False
                 st.session_state.history_page = 0
                 if result.deleted_count > 0:
-                    st.success(f"Successfully deleted {result.deleted_count} history records!")
+                    st.success(f"Successfully cleared {result.deleted_count} history records!")
                 else:
-                    st.warning("No records were found to delete.")
-            safe_mongodb_operation(delete_history_operation, "Failed to delete history data")
+                    st.warning("No records were found to clear.")
+            safe_mongodb_operation(delete_history_operation, "Failed to clear history data")
             if st.button("Done"):
                 st.rerun()
         
