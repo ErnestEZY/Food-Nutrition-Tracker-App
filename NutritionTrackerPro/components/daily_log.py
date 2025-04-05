@@ -66,7 +66,7 @@ def daily_food_log():
                         }
                     }
                 },
-                {"$limit": 30} 
+                {"$limit": 40} 
             ]))
 
             # Search using the brands index
@@ -80,12 +80,12 @@ def daily_food_log():
                         }
                     }
                 },
-                {"$limit": 30}
+                {"$limit": 40}
             ]))
 
             # Combine results and deduplicate by _id
             combined_results = {doc["_id"]: doc for doc in product_name_results + brands_results}.values()
-            return list(combined_results)[:20]  # Limit total results to 20
+            return list(combined_results)[:40] 
 
         search_results = safe_mongodb_operation(search_food_operation, "Food search failed") or []
         search_results = [food for food in search_results if has_valid_brand(food)]
@@ -93,7 +93,7 @@ def daily_food_log():
         if not search_results:
             st.info("No matching foods found with valid brands.")
             def get_default_foods_operation():
-                return list(food_collection.find({"brands": {"$ne": "", "$exists": True, "$ne": "Unknown"}}).limit(30))
+                return list(food_collection.find({"brands": {"$ne": "", "$exists": True, "$ne": "Unknown"}}).limit(40))
             all_foods = safe_mongodb_operation(get_default_foods_operation, "Failed to retrieve default foods") or []
             food_display_names = {format_food_display(food): food['product_name'] for food in all_foods}
         else:
@@ -156,7 +156,7 @@ def daily_food_log():
     recent_logs = list(daily_log_collection.find({
         "date": {"$gte": today_start_utc, "$lt": today_end_utc},
         "brand": {"$ne": ""}
-    }).sort("date", -1).limit(7))
+    }).sort("date", -1).limit(5))
     
     if recent_logs:
         for log in recent_logs:
