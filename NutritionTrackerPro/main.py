@@ -30,7 +30,7 @@ def main():
         "Daily Food Log": daily_food_log,
         "Nutrition Analysis": nutrition_analysis,
         "Food History": food_history,
-        "Settings": settings
+        "Food Database Config": settings
     }
 
     # Navigation callback
