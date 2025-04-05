@@ -3,7 +3,7 @@ import time
 from database import food_collection, safe_mongodb_operation
 
 def settings():
-    st.title("⚙️ Settings")
+    st.title("⚙️ Food Database Config")
     
     st.subheader("Add New Food into Database")
     with st.form("add_food_form"):
