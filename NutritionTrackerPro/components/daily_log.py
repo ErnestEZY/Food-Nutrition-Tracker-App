@@ -85,7 +85,7 @@ def daily_food_log():
 
             # Combine results and deduplicate by _id
             combined_results = {doc["_id"]: doc for doc in product_name_results + brands_results}.values()
-            return list(combined_results)[:40] 
+            return list(combined_results)[:50] 
 
         search_results = safe_mongodb_operation(search_food_operation, "Food search failed") or []
         search_results = [food for food in search_results if has_valid_brand(food)]
@@ -156,7 +156,7 @@ def daily_food_log():
     recent_logs = list(daily_log_collection.find({
         "date": {"$gte": today_start_utc, "$lt": today_end_utc},
         "brand": {"$ne": ""}
-    }).sort("date", -1).limit(5))
+    }).sort("date", -1).limit(6))
     
     if recent_logs:
         for log in recent_logs:
