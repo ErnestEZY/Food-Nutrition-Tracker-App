@@ -42,6 +42,7 @@ def main():
     )
 
     # Daily Tip Button
+    st.sidebar.markdown("---")
     if st.sidebar.button("🌟 Daily Nutrition Tip"):
         nutrition_tips = [
             "Drink 8 glasses of water daily!",
