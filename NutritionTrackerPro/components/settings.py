@@ -17,12 +17,19 @@ def settings():
         }
         submitted = st.form_submit_button("Add Food")
         if submitted:
-            def add_food_operation():
-                food_collection.insert_one({"product_name": product_name, "brands": brand, "nutriments": nutrients})
-                st.success("Food added successfully!")
-                time.sleep(1)
-                st.rerun()
-            safe_mongodb_operation(add_food_operation, "Failed to add food")
+            # Validate the brand input
+            if brand.strip().lower() == "unknown":
+                st.error("Brand name cannot be 'Unknown'. Please enter a valid brand.")
+            elif not product_name.strip():
+                st.error("Product Name cannot be empty.")
+            else:
+                def add_food_operation():
+                    food_collection.insert_one({"product_name": product_name, "brands": brand, "nutriments": nutrients})
+                    st.success("Food added successfully!")
+                    time.sleep(1)
+                    st.rerun()
+                safe_mongodb_operation(add_food_operation, "Failed to add food")
+    
     if st.button("Refresh Settings Page"):
         st.rerun()
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
@@ -38,7 +45,17 @@ def settings():
         st.session_state.show_done_button = False
     
     foods = safe_mongodb_operation(
-        lambda: list(food_collection.find({"product_name": {"$exists": True, "$ne": "", "$ne": "Unknown"}, "brands": {"$exists": True, "$ne": ""}}, {"product_name": 1, "brands": 1, "_id": 0})),
+        lambda: list(food_collection.find(
+            {
+                "product_name": {"$exists": True, "$ne": "", "$ne": "Unknown"},
+                "brands": {
+                    "$exists": True,
+                    "$ne": "",
+                    "$not": {"$regex": "^unknown$", "$options": "i"}
+                }
+            },
+            {"product_name": 1, "brands": 1, "_id": 0}
+        )),
         "Failed to retrieve foods"
     ) or []
     
