@@ -30,7 +30,7 @@ def settings():
                     st.rerun()
                 safe_mongodb_operation(add_food_operation, "Failed to add food")
     
-    if st.button("Refresh Settings Page"):
+    if st.button("Refresh Config Page"):
         st.rerun()
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
