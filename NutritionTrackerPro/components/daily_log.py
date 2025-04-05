@@ -100,7 +100,13 @@ def daily_food_log():
             food_display_names = {format_food_display(food): food['product_name'] for food in search_results}
     else:
         def get_recent_foods_operation():
-            return list(food_collection.find({"brands": {"$ne": "", "$exists": True}}).sort("_id", -1).limit(40))
+            return list(food_collection.find({
+                "brands": {
+                    "$exists": True,
+                    "$ne": "",
+                    "$not": {"$regex": "^unknown$", "$options": "i"}
+                }
+            }).sort("_id", -1).limit(40))
         recent_foods = safe_mongodb_operation(get_recent_foods_operation, "Failed to retrieve recent foods") or []
         food_display_names = {format_food_display(food): food['product_name'] for food in recent_foods}
     
@@ -155,7 +161,10 @@ def daily_food_log():
     st.subheader("Recent Additions (since 12 AM)")
     recent_logs = list(daily_log_collection.find({
         "date": {"$gte": today_start_utc, "$lt": today_end_utc},
-        "brand": {"$ne": ""}
+        "brand": {
+            "$ne": "",
+            "$not": {"$regex": "^unknown$", "$options": "i"}
+        }
     }).sort("date", -1).limit(6))
     
     if recent_logs:
