@@ -50,7 +50,8 @@ def daily_food_log():
         return f"{product_name} ({brand})" if brand else product_name
     
     def has_valid_brand(food):
-        return bool(food.get('brands', '').strip())
+        brand = food.get('brands', '').strip()
+        return bool(brand) and brand.lower() != "unknown"
     
     if search_query:
         def search_food_operation():
@@ -92,7 +93,7 @@ def daily_food_log():
         if not search_results:
             st.info("No matching foods found with valid brands.")
             def get_default_foods_operation():
-                return list(food_collection.find({"brands": {"$ne": "", "$exists": True}}).limit(20))
+                return list(food_collection.find({"brands": {"$ne": "", "$exists": True, "$ne": "Unknown"}}).limit(30))
             all_foods = safe_mongodb_operation(get_default_foods_operation, "Failed to retrieve default foods") or []
             food_display_names = {format_food_display(food): food['product_name'] for food in all_foods}
         else:
@@ -155,7 +156,7 @@ def daily_food_log():
     recent_logs = list(daily_log_collection.find({
         "date": {"$gte": today_start_utc, "$lt": today_end_utc},
         "brand": {"$ne": ""}
-    }).sort("date", -1).limit(5))
+    }).sort("date", -1).limit(7))
     
     if recent_logs:
         for log in recent_logs:
