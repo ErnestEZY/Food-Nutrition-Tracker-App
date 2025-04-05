@@ -100,7 +100,7 @@ def daily_food_log():
             food_display_names = {format_food_display(food): food['product_name'] for food in search_results}
     else:
         def get_recent_foods_operation():
-            return list(food_collection.find({"brands": {"$ne": "", "$exists": True}}).sort("_id", -1).limit(20))
+            return list(food_collection.find({"brands": {"$ne": "", "$exists": True}}).sort("_id", -1).limit(40))
         recent_foods = safe_mongodb_operation(get_recent_foods_operation, "Failed to retrieve recent foods") or []
         food_display_names = {format_food_display(food): food['product_name'] for food in recent_foods}
     
