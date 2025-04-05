@@ -20,6 +20,7 @@ def home_page():
         - 📉 Personalized Nutrition Goals
         - 🕒 Daily Reset at Midnight for Fresh Tracking
         """)
+    st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
     
     st.subheader("📏 Calculate Your BMI")
     st.write("Please enter your BMI information for accurate nutrition tracking.")
