@@ -5,7 +5,7 @@ from database import food_collection, safe_mongodb_operation
 def settings():
     st.title("⚙️ Settings")
     
-    st.subheader("Add New Food")
+    st.subheader("Add New Food into Database")
     with st.form("add_food_form"):
         product_name = st.text_input("Product Name")
         brand = st.text_input("Brand")
@@ -34,7 +34,7 @@ def settings():
         st.rerun()
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
-    st.subheader("Delete Food")
+    st.subheader("Delete Food from Database")
     if 'delete_confirmed' not in st.session_state:
         st.session_state.delete_confirmed = False
     if 'food_to_delete' not in st.session_state:
