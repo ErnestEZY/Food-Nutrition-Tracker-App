@@ -9,6 +9,7 @@ from components.settings import settings
 
 def main():
     st.sidebar.title("🧭 Tracker Pro Navigation")
+    st.sidebar.markdown("---")
     
     # Initialize session state for tip and page navigation
     if 'show_tip' not in st.session_state:
