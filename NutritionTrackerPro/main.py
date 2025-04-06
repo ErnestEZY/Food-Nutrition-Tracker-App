@@ -16,7 +16,7 @@ def main():
         st.session_state.tip_text = ""
         st.session_state.tip_time = 0
     if 'page' not in st.session_state:
-        st.session_state.page = "Home"
+        st.session_state.page = "Home Panel"
     if 'show_layout_info' not in st.session_state:
         st.session_state.show_layout_info = False
         st.session_state.layout_info_time = 0
