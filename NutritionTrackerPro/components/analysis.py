@@ -27,9 +27,9 @@ def nutrition_analysis():
     st.title("📊 Nutrition Analysis")
     
     if 'bmi_calculated' not in st.session_state or not st.session_state.bmi_calculated:
-        st.warning("Please calculate your BMI on the Home page first!")
-        if st.button("Go to Home Page"):
-            st.session_state.page = "Home"
+        st.warning("Please calculate your BMI on the Home Panel page first!")
+        if st.button("Go to Home Panel Page"):
+            st.session_state.page = "Home Panel"
             st.rerun()
         st.stop()
     
