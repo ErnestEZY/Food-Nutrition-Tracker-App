@@ -3,7 +3,7 @@ import time
 from database import food_collection, safe_mongodb_operation
 
 def settings():
-    st.title("⚙️ Food Database Config")
+    st.title("⚙️ Food Editor")
     
     st.subheader("Add New Food into Database")
     with st.form("add_food_form"):
@@ -30,7 +30,7 @@ def settings():
                     st.rerun()
                 safe_mongodb_operation(add_food_operation, "Failed to add food")
     
-    if st.button("Refresh Config Page"):
+    if st.button("Refresh Editor Page"):
         st.rerun()
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
