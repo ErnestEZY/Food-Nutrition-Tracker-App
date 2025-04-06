@@ -28,9 +28,9 @@ def daily_food_log():
                     st.write(f"Height: {st.session_state.height:.2f} m")
                     st.write(f"BMI = Weight / (Height)² = {st.session_state.weight:.1f} / ({st.session_state.height:.2f})² = {st.session_state.last_bmi:.1f}")
         else:
-            st.warning("Please calculate your BMI on the Home page first!")
-            if st.button("Go to Home Page"):
-                st.session_state.page = "Home"
+            st.warning("Please calculate your BMI on the Home Panel page first!")
+            if st.button("Go to Home Panel Page"):
+                st.session_state.page = "Home Panel"
                 st.rerun()
             st.stop()
     
