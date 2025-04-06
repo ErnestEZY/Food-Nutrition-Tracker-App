@@ -26,7 +26,7 @@ def main():
 
     # Define pages
     pages = {
-        "Home": home_page,
+        "Home Panel": home_page,
         "Daily Food Log": daily_food_log,
         "Nutrition Analysis": nutrition_analysis,
         "Food History": food_history,
