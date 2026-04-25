@@ -1,6 +1,9 @@
 # Environment variables
 .env
 
+# Streamlit Secrets (local only)
+.streamlit/secrets.toml
+
 # Python
 __pycache__/
 *.pyc

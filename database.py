@@ -12,9 +12,14 @@ load_dotenv()
 @st.cache_resource
 def init_connection():
     max_retries = 3
-    mongodb_uri = os.getenv('MONGODB_URI')
+    try:
+        mongodb_uri = st.secrets["MONGODB_URI"]
+    except KeyError:
+        st.error("MONGODB_URI not found in secrets. Please check your .streamlit/secrets.toml or Streamlit Cloud Secrets.")
+        return None
+    
     if not mongodb_uri:
-        st.error("MONGODB_URI not found in environment variables. Please check your .env file.")
+        st.error("MONGODB_URI is empty. Please provide a valid MongoDB connection string.")
         return None
     
     for attempt in range(max_retries):
