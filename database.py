@@ -2,11 +2,6 @@ import streamlit as st
 import pymongo
 from pymongo.errors import PyMongoError, NetworkTimeout, ServerSelectionTimeoutError
 import time
-import os
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 # MongoDB Connection with Retry Mechanism
 @st.cache_resource
