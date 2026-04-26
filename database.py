@@ -37,6 +37,7 @@ def init_connection():
 db = init_connection()
 food_collection = db["food_data"] if db is not None else None
 daily_log_collection = db["daily_logs"] if db is not None else None
+users_collection = db["users"] if db is not None else None
 
 def safe_mongodb_operation(operation, error_message="Operation failed"):
     try:

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import time
 from database import food_collection, daily_log_collection, safe_mongodb_operation
 from utils import DIET_GOALS, calculate_bmi_adjusted_goals
+from components.auth import current_user
 import pytz  # Add pytz for timezone handling
 
 # Define Malaysia timezone
@@ -140,6 +141,7 @@ def daily_food_log():
             mst_time = datetime.now(MALAYSIA_TZ)
             utc_time = mst_time.astimezone(pytz.UTC)
             daily_log_collection.insert_one({
+                "username": current_user(),
                 "food_name": selected_food,
                 "brand": food_details.get('brands', ''),
                 "display_name": format_food_display(food_details),
@@ -160,6 +162,7 @@ def daily_food_log():
     # Display Recent Additions (since 12 AM MST)
     st.subheader("Recent Additions (since 12 AM)")
     recent_logs = list(daily_log_collection.find({
+        "username": current_user(),
         "date": {"$gte": today_start_utc, "$lt": today_end_utc},
         "brand": {
             "$ne": "",

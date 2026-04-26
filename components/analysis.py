@@ -8,6 +8,7 @@ import random
 from statsmodels.tsa.arima.model import ARIMA
 from database import daily_log_collection
 from utils import DIET_GOALS, calculate_bmi_adjusted_goals
+from components.auth import current_user
 import pytz
 
 # Define Malaysia timezone
@@ -59,6 +60,7 @@ def nutrition_analysis():
 
     # Query logs for today (from 12 AM today to 12 AM tomorrow)
     today_logs = list(daily_log_collection.find({
+        "username": current_user(),
         "date": {"$gte": today_start_utc, "$lt": today_end_utc}
     }))
 
@@ -100,6 +102,7 @@ def nutrition_analysis():
     
     # Query historical logs for the current week (from Monday of the current week to 12 AM today) for the streak and other sections
     historical_logs = list(daily_log_collection.find({
+        "username": current_user(),
         "date": {"$gte": start_of_week_utc, "$lt": today_start_utc}
     }))
     # Make historical_logs dates offset-aware (UTC)
@@ -465,6 +468,7 @@ def nutrition_analysis():
 
     # Query all historical logs (no time restriction, for prediction only)
     historical_logs_all = list(daily_log_collection.find({
+        "username": current_user(),
         "date": {"$lt": today_start_utc}  # All logs before today
     }))
     # Make historical_logs_all dates offset-aware (UTC)

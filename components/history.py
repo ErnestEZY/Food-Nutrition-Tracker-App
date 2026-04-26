@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 from database import daily_log_collection, safe_mongodb_operation
+from components.auth import current_user
 import io
 import pytz
 
@@ -28,7 +29,7 @@ def food_history():
     
     # Check for all logs in the database
     total_logs = safe_mongodb_operation(
-        lambda: daily_log_collection.count_documents({}),
+        lambda: daily_log_collection.count_documents({"username": current_user()}),
         "Failed to count logs"
     ) or 0
     
@@ -40,7 +41,7 @@ def food_history():
         
         # Fetch the current page of logs
         history_logs = safe_mongodb_operation(
-            lambda: list(daily_log_collection.find({})
+            lambda: list(daily_log_collection.find({"username": current_user()})
                         .sort("date", -1)
                         .skip(st.session_state.history_page * records_per_page)
                         .limit(records_per_page)),
@@ -87,7 +88,7 @@ def food_history():
             
             if st.button("Export Complete History to CSV"):
                 all_logs = safe_mongodb_operation(
-                    lambda: list(daily_log_collection.find({}).sort("date", -1)),
+                    lambda: list(daily_log_collection.find({"username": current_user()}).sort("date", -1)),
                     "Failed to retrieve logs for export"
                 ) or []
                 export_df = pd.DataFrame(all_logs)
@@ -113,7 +114,7 @@ def food_history():
     # Delete Latest Food
     if total_logs > 0:  # Only show if there are logs to delete
         latest_food = safe_mongodb_operation(
-            lambda: daily_log_collection.find_one({}, sort=[("date", -1)]),
+            lambda: daily_log_collection.find_one({"username": current_user()}, sort=[("date", -1)]),
             "Failed to retrieve the latest food entry"
         )
         
@@ -172,7 +173,7 @@ def food_history():
         
         if delete_confirmed:
             def delete_history_operation():
-                result = daily_log_collection.delete_many({})
+                result = daily_log_collection.delete_many({"username": current_user()})
                 st.session_state.show_delete_confirmation = False
                 st.session_state.history_page = 0
                 if result.deleted_count > 0:
