@@ -2,11 +2,20 @@ import re
 import streamlit as st
 import bcrypt
 from datetime import datetime, timezone, timedelta
+import extra_streamlit_components as stx
 from database import users_collection
 
 # ── constants ─────────────────────────────────────────────────────────────────
 
 SESSION_DURATION = timedelta(hours=3)
+COOKIE_NAME      = "nt_session"
+
+
+# ── cookie manager (singleton per session) ────────────────────────────────────
+
+@st.cache_resource
+def _get_cookie_manager():
+    return stx.CookieManager(key="nt_cookie_mgr")
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -67,20 +76,57 @@ def _create_user(email: str, username: str, password: str) -> bool:
 
 # ── session helpers ───────────────────────────────────────────────────────────
 
+def _restore_session_from_cookie():
+    """
+    Called once per load. If a valid session cookie exists and the session
+    isn't already populated, restore it into st.session_state.
+    """
+    if st.session_state.get("authenticated"):
+        return  # already set this run
+
+    cookie_mgr = _get_cookie_manager()
+    token = cookie_mgr.get(COOKIE_NAME)
+    if not token:
+        return
+
+    # Token format: "email|username|iso_login_time"
+    try:
+        email, username, login_iso = token.split("|", 2)
+        login_time = datetime.fromisoformat(login_iso)
+        if datetime.now(timezone.utc) - login_time > SESSION_DURATION:
+            cookie_mgr.delete(COOKIE_NAME)
+            return
+        st.session_state.authenticated = True
+        st.session_state.email         = email
+        st.session_state.username      = username
+        st.session_state.login_time    = login_time
+    except Exception:
+        cookie_mgr.delete(COOKIE_NAME)
+
+
 def is_logged_in() -> bool:
+    _restore_session_from_cookie()
+
     if not st.session_state.get("authenticated", False):
         return False
-    # Check session expiry
+
     login_time = st.session_state.get("login_time")
     if login_time is None:
         return False
+
     if datetime.now(timezone.utc) - login_time > SESSION_DURATION:
-        # Session expired — clear everything and notify
-        for key in ("authenticated", "email", "username", "login_time", "bmi_loaded"):
-            st.session_state.pop(key, None)
+        _clear_session()
         st.warning("Your session has expired. Please sign in again.")
         return False
+
     return True
+
+
+def _clear_session():
+    cookie_mgr = _get_cookie_manager()
+    cookie_mgr.delete(COOKIE_NAME)
+    for key in ("authenticated", "email", "username", "login_time", "bmi_loaded"):
+        st.session_state.pop(key, None)
 
 
 def current_user() -> str:
@@ -94,8 +140,7 @@ def current_name() -> str:
 
 
 def logout():
-    for key in ("authenticated", "email", "username", "login_time", "bmi_loaded"):
-        st.session_state.pop(key, None)
+    _clear_session()
     st.rerun()
 
 
@@ -135,10 +180,17 @@ def auth_page():
                     elif not _check_password(password, user["password"]):
                         st.error("Incorrect password. Please try again.")
                     else:
+                        login_time = datetime.now(timezone.utc)
                         st.session_state.authenticated = True
                         st.session_state.email         = user["email"]
                         st.session_state.username      = user["username"]
-                        st.session_state.login_time    = datetime.now(timezone.utc)
+                        st.session_state.login_time    = login_time
+                        # Persist session in browser cookie
+                        token = f"{user['email']}|{user['username']}|{login_time.isoformat()}"
+                        _get_cookie_manager().set(
+                            COOKIE_NAME, token,
+                            expires_at=login_time + SESSION_DURATION,
+                        )
                         st.rerun()
 
         st.markdown(
