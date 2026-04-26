@@ -1,24 +1,17 @@
 import re
+import secrets
 import streamlit as st
 import bcrypt
 from datetime import datetime, timezone, timedelta
-import extra_streamlit_components as stx
-from database import users_collection
+from database import users_collection, db
 
 # ── constants ─────────────────────────────────────────────────────────────────
 
-SESSION_DURATION = timedelta(hours=3)
-COOKIE_NAME      = "nt_session"
+SESSION_DURATION    = timedelta(hours=3)
+sessions_collection = db["sessions"] if db is not None else None
 
 
-# ── cookie manager (singleton per session) ────────────────────────────────────
-
-@st.cache_resource
-def _get_cookie_manager():
-    return stx.CookieManager(key="nt_cookie_mgr")
-
-
-# ── helpers ──────────────────────────────────────────────────────────────────
+# ── helpers ───────────────────────────────────────────────────────────────────
 
 def _hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
@@ -33,10 +26,6 @@ def _get_user(email: str):
 
 
 def _validate_password(password: str) -> str | None:
-    """
-    Returns an error message string if invalid, or None if valid.
-    Rules: 8–12 chars, at least 1 uppercase, 1 lowercase, 1 digit, 1 special char.
-    """
     if len(password) < 8:
         return "Password must be at least 8 characters."
     if len(password) > 12:
@@ -53,89 +42,106 @@ def _validate_password(password: str) -> str | None:
 
 
 def _validate_email(email: str) -> str | None:
-    """Basic email format check."""
-    pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-    if not re.match(pattern, email):
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         return "Please enter a valid email address."
     return None
 
 
 def _create_user(email: str, username: str, password: str) -> bool:
-    """Insert a new user. Returns False if email already exists."""
     email = email.lower().strip()
     if _get_user(email):
         return False
     users_collection.insert_one({
-        "email": email,
-        "username": username.strip(),
-        "password": _hash_password(password),
+        "email":      email,
+        "username":   username.strip(),
+        "password":   _hash_password(password),
         "created_at": datetime.utcnow(),
     })
     return True
 
 
-# ── session helpers ───────────────────────────────────────────────────────────
+# ── session token helpers ─────────────────────────────────────────────────────
 
-def _restore_session_from_cookie():
-    """
-    Called once per load. If a valid session cookie exists and the session
-    isn't already populated, restore it into st.session_state.
-    """
+def _create_session_token(email: str, username: str) -> str:
+    sessions_collection.delete_many({"email": email})
+    token      = secrets.token_urlsafe(32)
+    login_time = datetime.now(timezone.utc)
+    sessions_collection.insert_one({
+        "token":      token,
+        "email":      email,
+        "username":   username,
+        "login_time": login_time,
+        "expires_at": login_time + SESSION_DURATION,
+    })
+    return token
+
+
+def _get_session(token: str):
+    if not token:
+        return None
+    return sessions_collection.find_one({
+        "token":      token,
+        "expires_at": {"$gt": datetime.now(timezone.utc)},
+    })
+
+
+def _delete_session(token: str):
+    if token:
+        sessions_collection.delete_one({"token": token})
+
+
+# ── session state helpers ─────────────────────────────────────────────────────
+
+def _restore_session():
     if st.session_state.get("authenticated"):
-        return  # already set this run
-
-    cookie_mgr = _get_cookie_manager()
-    token = cookie_mgr.get(COOKIE_NAME)
+        return
+    token = st.query_params.get("token")
     if not token:
         return
-
-    # Token format: "email|username|iso_login_time"
-    try:
-        email, username, login_iso = token.split("|", 2)
-        login_time = datetime.fromisoformat(login_iso)
-        if datetime.now(timezone.utc) - login_time > SESSION_DURATION:
-            cookie_mgr.delete(COOKIE_NAME)
-            return
-        st.session_state.authenticated = True
-        st.session_state.email         = email
-        st.session_state.username      = username
-        st.session_state.login_time    = login_time
-    except Exception:
-        cookie_mgr.delete(COOKIE_NAME)
+    session = _get_session(token)
+    if not session:
+        st.query_params.clear()
+        return
+    login_time = session["login_time"]
+    if login_time.tzinfo is None:
+        login_time = login_time.replace(tzinfo=timezone.utc)
+    st.session_state.authenticated = True
+    st.session_state.email         = session["email"]
+    st.session_state.username      = session["username"]
+    st.session_state.login_time    = login_time
+    st.session_state.session_token = token
 
 
 def is_logged_in() -> bool:
-    _restore_session_from_cookie()
-
+    _restore_session()
     if not st.session_state.get("authenticated", False):
         return False
-
     login_time = st.session_state.get("login_time")
     if login_time is None:
         return False
-
+    if login_time.tzinfo is None:
+        login_time = login_time.replace(tzinfo=timezone.utc)
     if datetime.now(timezone.utc) - login_time > SESSION_DURATION:
         _clear_session()
         st.warning("Your session has expired. Please sign in again.")
         return False
-
     return True
 
 
 def _clear_session():
-    cookie_mgr = _get_cookie_manager()
-    cookie_mgr.delete(COOKIE_NAME)
-    for key in ("authenticated", "email", "username", "login_time", "bmi_loaded"):
+    token = st.session_state.get("session_token")
+    _delete_session(token)
+    st.query_params.clear()
+    for key in ("authenticated", "email", "username", "login_time",
+                "session_token", "bmi_loaded"):
         st.session_state.pop(key, None)
 
 
 def current_user() -> str:
-    """Return the logged-in email (used as unique user key), or empty string."""
     return st.session_state.get("email", "")
 
 
 def current_name() -> str:
-    """Return the logged-in display username."""
     return st.session_state.get("username", "")
 
 
@@ -147,10 +153,6 @@ def logout():
 # ── UI ────────────────────────────────────────────────────────────────────────
 
 def auth_page():
-    """
-    Renders the Sign In / Sign Up page.
-    Returns True once the user is authenticated so the caller can proceed.
-    """
     if is_logged_in():
         return True
 
@@ -158,21 +160,74 @@ def auth_page():
 
     tab_signin, tab_signup = st.tabs(["Sign In", "Sign Up"])
 
-    # ── Sign In tab ───────────────────────────────────────────────────────────
+    # ── Sign In ───────────────────────────────────────────────────────────────
     with tab_signin:
         st.subheader("Welcome back!")
+
+        # Mask the password field using CSS -webkit-text-security (type="text"
+        # so Google password manager never triggers) and block spaces via JS.
+        st.markdown(
+            """
+            <style>
+            /* Visually mask the password text input with bullet dots */
+            input[placeholder="Enter your password"] {
+                -webkit-text-security: disc !important;
+                text-security: disc !important;
+            }
+            </style>
+            <script>
+            (function() {
+                function patch() {
+                    var doc = window.parent.document;
+                    var inputs = doc.querySelectorAll(
+                        'input[placeholder="Enter your password"]'
+                    );
+                    inputs.forEach(function(el) {
+                        if (el.dataset.patched) return;
+                        el.dataset.patched = '1';
+                        el.setAttribute('autocomplete', 'off');
+                        // Block spaces
+                        el.addEventListener('keydown', function(e) {
+                            if (e.key === ' ') e.preventDefault();
+                        });
+                        el.addEventListener('input', function() {
+                            var pos = el.selectionStart;
+                            var clean = el.value.replace(/ /g, '');
+                            if (clean !== el.value) {
+                                el.value = clean;
+                                el.selectionStart = el.selectionEnd = Math.max(0, pos - 1);
+                                el.dispatchEvent(new Event('input', {bubbles: true}));
+                            }
+                        });
+                    });
+                }
+                patch();
+                new MutationObserver(patch).observe(
+                    window.parent.document.body,
+                    {childList: true, subtree: true}
+                );
+            })();
+            </script>
+            """,
+            unsafe_allow_html=True,
+        )
+
         with st.form("login_form"):
-            email    = st.text_input("Email", max_chars=50, placeholder="you@example.com")
-            password = st.text_input("Password", type="password", max_chars=12, placeholder="Enter your password")
+            email    = st.text_input("Email", max_chars=50,
+                                     placeholder="you@example.com")
+            # type="text" — Google password manager only triggers on type="password"
+            password = st.text_input("Password", max_chars=12,
+                                     placeholder="Enter your password")
             submitted = st.form_submit_button("Sign In", use_container_width=True)
 
         if submitted:
+            password = (password or "").replace(" ", "")
             if not email or not password:
                 st.error("Please fill in all fields.")
             else:
-                email_error = _validate_email(email)
-                if email_error:
-                    st.error(email_error)
+                err = _validate_email(email)
+                if err:
+                    st.error(err)
                 else:
                     user = _get_user(email)
                     if user is None:
@@ -180,25 +235,23 @@ def auth_page():
                     elif not _check_password(password, user["password"]):
                         st.error("Incorrect password. Please try again.")
                     else:
+                        token      = _create_session_token(user["email"], user["username"])
                         login_time = datetime.now(timezone.utc)
                         st.session_state.authenticated = True
                         st.session_state.email         = user["email"]
                         st.session_state.username      = user["username"]
                         st.session_state.login_time    = login_time
-                        # Persist session in browser cookie
-                        token = f"{user['email']}|{user['username']}|{login_time.isoformat()}"
-                        _get_cookie_manager().set(
-                            COOKIE_NAME, token,
-                            expires_at=login_time + SESSION_DURATION,
-                        )
+                        st.session_state.session_token = token
+                        st.query_params["token"]       = token
                         st.rerun()
 
         st.markdown(
-            "<div style='text-align: center;'>No account yet? Switch to the <b>Sign Up</b> tab above to create one.</div>",
+            "<div style='text-align:center;'>No account yet? "
+            "Switch to the <b>Sign Up</b> tab above to create one.</div>",
             unsafe_allow_html=True,
         )
 
-    # ── Sign Up tab ───────────────────────────────────────────────────────────
+    # ── Sign Up ───────────────────────────────────────────────────────────────
     with tab_signup:
         st.subheader("Create an account")
         with st.form("register_form"):
@@ -208,11 +261,14 @@ def auth_page():
                                          placeholder="you@example.com")
             new_password = st.text_input(
                 "Password", type="password", max_chars=12,
-                help="Format: 8–12 characters · uppercase · lowercase · number · special character", placeholder="Create your password"
+                help="Format: 8-12 characters · uppercase · lowercase · number · special character",
+                placeholder="Create your password",
             )
-            confirm_password = st.text_input("Confirm Password", type="password", max_chars=12,
-                                             placeholder="Re-enter your password",
-                                             help="Re-enter your password to confirm. Make sure it matches the one above.")
+            confirm_password = st.text_input(
+                "Confirm Password", type="password", max_chars=12,
+                placeholder="Re-enter your password",
+                help="Re-enter your password to confirm. Make sure it matches the one above.",
+            )
             reg_submitted = st.form_submit_button("Sign Up", use_container_width=True)
 
         if reg_submitted:
@@ -221,13 +277,13 @@ def auth_page():
             elif len(new_username.strip()) < 3:
                 st.error("Username must be at least 3 characters.")
             else:
-                email_error = _validate_email(new_email)
-                if email_error:
-                    st.error(email_error)
+                err = _validate_email(new_email)
+                if err:
+                    st.error(err)
                 else:
-                    pw_error = _validate_password(new_password)
-                    if pw_error:
-                        st.error(pw_error)
+                    pw_err = _validate_password(new_password)
+                    if pw_err:
+                        st.error(pw_err)
                     elif new_password != confirm_password:
                         st.error("Passwords do not match.")
                     else:
@@ -240,7 +296,8 @@ def auth_page():
                             st.error("An account with that email already exists.")
 
         st.markdown(
-            "<div style='text-align: center;'>Already have an account? Switch to the <b>Sign In</b> tab above.</div>",
+            "<div style='text-align:center;'>Already have an account? "
+            "Switch to the <b>Sign In</b> tab above.</div>",
             unsafe_allow_html=True,
         )
 

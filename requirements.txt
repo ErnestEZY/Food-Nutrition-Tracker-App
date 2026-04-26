@@ -1,5 +1,4 @@
 bcrypt==4.2.1
-extra-streamlit-components==0.1.80
 numpy==2.2.6
 pandas==2.2.3
 plotly==6.0.0
