@@ -1,7 +1,8 @@
 import streamlit as st
 import random
 import time
-from components.auth import auth_page, is_logged_in, current_name, current_user, logout
+from datetime import datetime
+from components.auth import auth_page, is_logged_in, current_name, current_user, logout, SESSION_DURATION
 from components.home import home_page, load_bmi_from_db
 from components.daily_log import daily_food_log
 from components.analysis import nutrition_analysis
@@ -21,6 +22,15 @@ def main():
 
     st.sidebar.title("🧭 Tracker Pro Navigation")
     st.sidebar.markdown(f"👤 **{current_name()}** (`{current_user()}`)")
+
+    # Show remaining session time
+    login_time = st.session_state.get("login_time")
+    if login_time:
+        from datetime import timezone, timedelta
+        remaining = SESSION_DURATION - (datetime.now(timezone.utc) - login_time)
+        hours, remainder = divmod(int(remaining.total_seconds()), 3600)
+        minutes = remainder // 60
+        st.sidebar.caption(f"⏱ Session expires in {hours}h {minutes}m")
 
     # Initialize session state
     if 'show_tip' not in st.session_state:

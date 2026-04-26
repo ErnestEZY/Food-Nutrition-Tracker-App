@@ -1,8 +1,12 @@
 import re
 import streamlit as st
 import bcrypt
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from database import users_collection
+
+# ── constants ─────────────────────────────────────────────────────────────────
+
+SESSION_DURATION = timedelta(hours=3)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -64,7 +68,19 @@ def _create_user(email: str, username: str, password: str) -> bool:
 # ── session helpers ───────────────────────────────────────────────────────────
 
 def is_logged_in() -> bool:
-    return st.session_state.get("authenticated", False)
+    if not st.session_state.get("authenticated", False):
+        return False
+    # Check session expiry
+    login_time = st.session_state.get("login_time")
+    if login_time is None:
+        return False
+    if datetime.now(timezone.utc) - login_time > SESSION_DURATION:
+        # Session expired — clear everything and notify
+        for key in ("authenticated", "email", "username", "login_time", "bmi_loaded"):
+            st.session_state.pop(key, None)
+        st.warning("Your session has expired. Please sign in again.")
+        return False
+    return True
 
 
 def current_user() -> str:
@@ -78,7 +94,7 @@ def current_name() -> str:
 
 
 def logout():
-    for key in ("authenticated", "email", "username"):
+    for key in ("authenticated", "email", "username", "login_time", "bmi_loaded"):
         st.session_state.pop(key, None)
     st.rerun()
 
@@ -120,8 +136,9 @@ def auth_page():
                         st.error("Incorrect password. Please try again.")
                     else:
                         st.session_state.authenticated = True
-                        st.session_state.email    = user["email"]
-                        st.session_state.username = user["username"]
+                        st.session_state.email         = user["email"]
+                        st.session_state.username      = user["username"]
+                        st.session_state.login_time    = datetime.now(timezone.utc)
                         st.rerun()
 
         st.markdown(
