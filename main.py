@@ -2,7 +2,7 @@ import streamlit as st
 import random
 import time
 from components.auth import auth_page, is_logged_in, current_name, current_user, logout
-from components.home import home_page
+from components.home import home_page, load_bmi_from_db
 from components.daily_log import daily_food_log
 from components.analysis import nutrition_analysis
 from components.history import food_history
@@ -16,6 +16,9 @@ def main():
         return
 
     # ── Sidebar ───────────────────────────────────────────────────────────────
+    # Restore BMI from DB once per session
+    load_bmi_from_db()
+
     st.sidebar.title("🧭 Tracker Pro Navigation")
     st.sidebar.markdown(f"👤 **{current_name()}** (`{current_user()}`)")
 
@@ -126,7 +129,7 @@ def main():
 
     # Logout
     st.sidebar.markdown("<hr style='margin: 10px 0; border: 1px solid'>", unsafe_allow_html=True)
-    if st.sidebar.button("🚪 Logout", use_container_width=True):
+    if st.sidebar.button("🚪 Sign Out", use_container_width=True):
         logout()
 
     # Render selected page

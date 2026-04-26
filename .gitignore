@@ -20,6 +20,9 @@ pip-delete-this-directory.txt
 .coverage.*
 .pytest_cache/
 
+# Scripts
+*.ps1
+
 # IDE
 .vscode/
 .idea/
