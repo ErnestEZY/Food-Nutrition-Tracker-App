@@ -163,13 +163,38 @@ def auth_page():
     # ── Sign In ───────────────────────────────────────────────────────────────
     with tab_signin:
         st.subheader("Welcome back!")
-
         with st.form("login_form"):
             email    = st.text_input("Email", max_chars=50,
                                      placeholder="you@example.com")
             password = st.text_input("Password", type="password", max_chars=12,
                                      placeholder="Enter your password")
             submitted = st.form_submit_button("Sign In", use_container_width=True)
+
+        # Patch autocomplete on the sign-in password field to "current-password"
+        # This tells Google it's a login field, suppressing the generate suggestion
+        st.markdown(
+            """
+            <script>
+            (function() {
+                function patch() {
+                    var doc = window.parent.document;
+                    var pws = doc.querySelectorAll('input[type="password"]');
+                    pws.forEach(function(el) {
+                        if (el.placeholder === 'Enter your password') {
+                            el.setAttribute('autocomplete', 'current-password');
+                        }
+                    });
+                }
+                patch();
+                new MutationObserver(patch).observe(
+                    window.parent.document.body,
+                    {childList: true, subtree: true}
+                );
+            })();
+            </script>
+            """,
+            unsafe_allow_html=True,
+        )
 
         if submitted:
             password = (password or "").replace(" ", "")
@@ -197,7 +222,7 @@ def auth_page():
                         st.rerun()
 
         st.markdown(
-            "<div style='text-align:center;'>No account yet? "
+            "<div style='text-align:center; margin-top:-1rem;'>No account yet? "
             "Switch to the <b>Sign Up</b> tab above to create one.</div>",
             unsafe_allow_html=True,
         )
