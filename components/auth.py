@@ -164,59 +164,10 @@ def auth_page():
     with tab_signin:
         st.subheader("Welcome back!")
 
-        # Mask the password field using CSS -webkit-text-security (type="text"
-        # so Google password manager never triggers) and block spaces via JS.
-        st.markdown(
-            """
-            <style>
-            /* Visually mask the password text input with bullet dots */
-            input[placeholder="Enter your password"] {
-                -webkit-text-security: disc !important;
-                text-security: disc !important;
-            }
-            </style>
-            <script>
-            (function() {
-                function patch() {
-                    var doc = window.parent.document;
-                    var inputs = doc.querySelectorAll(
-                        'input[placeholder="Enter your password"]'
-                    );
-                    inputs.forEach(function(el) {
-                        if (el.dataset.patched) return;
-                        el.dataset.patched = '1';
-                        el.setAttribute('autocomplete', 'off');
-                        // Block spaces
-                        el.addEventListener('keydown', function(e) {
-                            if (e.key === ' ') e.preventDefault();
-                        });
-                        el.addEventListener('input', function() {
-                            var pos = el.selectionStart;
-                            var clean = el.value.replace(/ /g, '');
-                            if (clean !== el.value) {
-                                el.value = clean;
-                                el.selectionStart = el.selectionEnd = Math.max(0, pos - 1);
-                                el.dispatchEvent(new Event('input', {bubbles: true}));
-                            }
-                        });
-                    });
-                }
-                patch();
-                new MutationObserver(patch).observe(
-                    window.parent.document.body,
-                    {childList: true, subtree: true}
-                );
-            })();
-            </script>
-            """,
-            unsafe_allow_html=True,
-        )
-
         with st.form("login_form"):
             email    = st.text_input("Email", max_chars=50,
                                      placeholder="you@example.com")
-            # type="text" — Google password manager only triggers on type="password"
-            password = st.text_input("Password", max_chars=12,
+            password = st.text_input("Password", type="password", max_chars=12,
                                      placeholder="Enter your password")
             submitted = st.form_submit_button("Sign In", use_container_width=True)
 
