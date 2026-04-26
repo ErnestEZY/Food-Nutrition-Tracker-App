@@ -23,14 +23,118 @@ def main():
     st.sidebar.title("🧭 Tracker Pro Navigation")
     st.sidebar.markdown(f"👤 **{current_name()}** (`{current_user()}`)")
 
-    # Show remaining session time
+    # ── Session countdown timer (JS-driven, browser-side) ─────────────────────
     login_time = st.session_state.get("login_time")
     if login_time:
-        from datetime import timezone, timedelta
-        remaining = SESSION_DURATION - (datetime.now(timezone.utc) - login_time)
-        hours, remainder = divmod(int(remaining.total_seconds()), 3600)
-        minutes = remainder // 60
-        st.sidebar.caption(f"⏱ Session expires in {hours}h {minutes}m")
+        from datetime import timezone
+        remaining_secs = int(
+            SESSION_DURATION.total_seconds()
+            - (datetime.now(timezone.utc) - login_time).total_seconds()
+        )
+        remaining_secs = max(0, remaining_secs)
+
+        # If already expired on this rerun, is_logged_in() will have caught it above.
+        # Inject a JS countdown that:
+        #   - shows a subtle pill in the sidebar at all times
+        #   - turns amber when ≤ 5 min remain
+        #   - turns red + pulses when ≤ 2 min remain
+        #   - shows a modal dialog at 0 and reloads the page
+        st.sidebar.markdown(
+            f"""
+            <div id="session-timer-wrap" style="
+                display:flex; align-items:center; gap:6px;
+                padding:5px 10px; border-radius:20px;
+                background:#f0f4ff; border:1px solid #c8d8ff;
+                font-size:13px; color:#3a5bd9; margin-bottom:4px;
+                transition: background 0.5s, color 0.5s, border 0.5s;">
+              <span id="session-timer-icon">⏱</span>
+              <span>Session: <b id="session-timer">--:--:--</b></span>
+            </div>
+
+            <div id="session-expired-modal" style="
+                display:none; position:fixed; inset:0; z-index:9999;
+                background:rgba(0,0,0,0.55); align-items:center; justify-content:center;">
+              <div style="
+                  background:#fff; border-radius:14px; padding:36px 40px;
+                  max-width:360px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+                <div style="font-size:48px; margin-bottom:12px;">⏰</div>
+                <h2 style="margin:0 0 8px; color:#d32f2f;">Session Expired</h2>
+                <p style="color:#555; margin:0 0 24px;">
+                  Your 3-hour session has ended.<br>Please sign in again to continue.
+                </p>
+                <button onclick="location.reload()" style="
+                    background:#d32f2f; color:#fff; border:none;
+                    padding:10px 28px; border-radius:8px; font-size:15px;
+                    cursor:pointer;">Sign In Again</button>
+              </div>
+            </div>
+
+            <script>
+            (function() {{
+                var remaining = {remaining_secs};
+                var wrap  = document.getElementById('session-timer-wrap');
+                var timer = document.getElementById('session-timer');
+                var icon  = document.getElementById('session-timer-icon');
+                var modal = document.getElementById('session-expired-modal');
+
+                function fmt(s) {{
+                    var h = Math.floor(s / 3600);
+                    var m = Math.floor((s % 3600) / 60);
+                    var sec = s % 60;
+                    return (h > 0 ? String(h).padStart(2,'0') + ':' : '')
+                         + String(m).padStart(2,'0') + ':'
+                         + String(sec).padStart(2,'0');
+                }}
+
+                function tick() {{
+                    if (remaining <= 0) {{
+                        timer.textContent = '00:00';
+                        modal.style.display = 'flex';
+                        return;
+                    }}
+                    timer.textContent = fmt(remaining);
+
+                    // Style transitions
+                    if (remaining <= 120) {{
+                        // Red + pulse under 2 min
+                        wrap.style.background  = '#fff0f0';
+                        wrap.style.border      = '1px solid #ffaaaa';
+                        wrap.style.color       = '#c62828';
+                        icon.textContent       = '🔴';
+                        wrap.style.animation   = 'pulse 1s infinite';
+                    }} else if (remaining <= 300) {{
+                        // Amber under 5 min
+                        wrap.style.background  = '#fffbe6';
+                        wrap.style.border      = '1px solid #ffe082';
+                        wrap.style.color       = '#e65100';
+                        icon.textContent       = '⚠️';
+                        wrap.style.animation   = 'none';
+                    }} else {{
+                        wrap.style.background  = '#f0f4ff';
+                        wrap.style.border      = '1px solid #c8d8ff';
+                        wrap.style.color       = '#3a5bd9';
+                        icon.textContent       = '⏱';
+                        wrap.style.animation   = 'none';
+                    }}
+
+                    remaining--;
+                    setTimeout(tick, 1000);
+                }}
+
+                // Inject pulse keyframes once
+                if (!document.getElementById('pulse-style')) {{
+                    var s = document.createElement('style');
+                    s.id = 'pulse-style';
+                    s.textContent = '@keyframes pulse {{ 0%,100% {{ opacity:1 }} 50% {{ opacity:0.5 }} }}';
+                    document.head.appendChild(s);
+                }}
+
+                tick();
+            }})();
+            </script>
+            """,
+            unsafe_allow_html=True,
+        )
 
     # Initialize session state
     if 'show_tip' not in st.session_state:
